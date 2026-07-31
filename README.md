@@ -1,17 +1,74 @@
-# family_guard
+# Family Guard 🛡️
 
-A new Flutter project.
+A family-safety app featuring real-time location sharing, place alerts (geofencing), location history, and SOS/emergency alerts with parent and child role experiences.
 
-## Getting Started
+---
 
-This project is a starting point for a Flutter application.
+## 🚀 Current Implementation Status (Phase 1 — Step 0)
 
-A few resources to get you started if this is your first Flutter project:
+### What is Implemented & Ready to Test:
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+1. **App Shell & Design Theme**:
+   - Material 3 theme powered by **Nunito** (Google Fonts).
+   - Figma design tokens implemented in `AppColors` (palette featuring `#EFF6FF` soft background, `#3B82F6` primary blue, teal, SOS red, and family member pin colors).
+   - `ProviderScope` initialized for Riverpod state management.
+   - Clean initial screen with branded shield logo and themed layout.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+2. **Core Data Models**:
+   - `Member` model (supports parent/child roles, pin colors, location coordinates, battery %, movement state, stale tracking indicator).
+   - `Place` model (supports categories: home, school, work, custom, geofence radius).
+   - `AlertEvent` model (arrival/departure logs).
+
+3. **Android Platform Configuration**:
+   - `minSdkVersion`: **26** (Android 8.0+)
+   - `targetSdkVersion`: **34** (Android 14)
+   - `compileSdkVersion`: **34**
+   - Manifest configured with permission skeleton for background location tracking, foreground services, boot receiver, notifications, and battery optimization exemptions.
+
+4. **All Core Dependencies Configured**:
+   - Firebase (`firebase_core`, `firebase_auth`, `cloud_firestore`, `firebase_messaging`)
+   - Maps (`google_maps_flutter`)
+   - State Management (`flutter_riverpod`)
+   - Local Storage & Sync (`sqflite`, `shared_preferences`)
+   - Permissions & Notifications (`permission_handler`, `flutter_local_notifications`)
+   - Network & Utilities (`dio`, `intl`, `equatable`)
+
+---
+
+## 📱 How to Test on Mobile / Emulator
+
+Yes! You can run and test the app right now on an Android physical device or emulator.
+
+### Prerequisites
+- Android Studio / Android SDK installed.
+- USB Debugging enabled on your Android physical device, OR an Android Emulator created (API 26+).
+
+### Step-by-Step Instructions
+
+1. **Check connected devices**:
+   ```bash
+   flutter devices
+   ```
+
+2. **Run the app on your mobile device/emulator**:
+   ```bash
+   flutter run
+   ```
+   *(If multiple devices are connected, select your target device using `flutter run -d <device_id>`)*
+
+3. **Build Debug APK for manual installation** (Optional):
+   ```bash
+   flutter build apk --debug
+   ```
+   The APK will be generated at:
+   `build/app/outputs/flutter-apk/app-debug.apk`
+
+---
+
+## 🧪 Verification Commands
+
+To verify code health:
+```bash
+flutter analyze
+flutter test
+```
