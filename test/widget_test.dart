@@ -23,6 +23,6 @@ void main() {
       ),
     );
 
-    expect(find.text('Family Guard'), findsOneWidget);
+    expect(find.text('FamilyGuard'), findsOneWidget);
   });
 }

@@ -1,0 +1,24 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "familyguard-v2-app",
+          "appId": "1:160141197240:android:e7ef291384709f1720994d",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "familyguard-v2-app",
+          "configurations": {
+            "android": "1:160141197240:android:e7ef291384709f1720994d"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}

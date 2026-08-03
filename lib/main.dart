@@ -1,9 +1,17 @@
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'core/theme/app_colors.dart';
+import 'core/providers/app_state_provider.dart';
 import 'core/theme/app_theme.dart';
+import 'features/home/presentation/main_shell.dart';
+import 'features/onboarding/presentation/onboarding_screen.dart';
+import 'firebase_options.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
   runApp(
     const ProviderScope(
       child: FamilyGuardApp(),
@@ -11,71 +19,20 @@ void main() {
   );
 }
 
-class FamilyGuardApp extends StatelessWidget {
+class FamilyGuardApp extends ConsumerWidget {
   const FamilyGuardApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final appState = ref.watch(appStateProvider);
+
     return MaterialApp(
       title: 'Family Guard',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
-      home: const BlankHomeShell(),
-    );
-  }
-}
-
-class BlankHomeShell extends StatelessWidget {
-  const BlankHomeShell({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.3),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: const Icon(
-                  Icons.shield_rounded,
-                  color: Colors.white,
-                  size: 40,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Family Guard',
-                style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.w800,
-                      color: AppColors.textPrimary,
-                    ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Environment & Dependencies Ready',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppColors.textMuted,
-                    ),
-              ),
-            ],
-          ),
-        ),
-      ),
+      home: appState.stage == AppStage.onboarding
+          ? const OnboardingScreen()
+          : const MainShellScreen(),
     );
   }
 }
