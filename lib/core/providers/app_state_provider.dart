@@ -45,6 +45,10 @@ class AppStateNotifier extends StateNotifier<AppState> {
     state = state.copyWith(role: role);
   }
 
+  void setCircleName(String name) {
+    state = state.copyWith(circleName: name);
+  }
+
   void completeOnboarding(UserRole role, [String? circleName]) {
     state = state.copyWith(
       stage: AppStage.main,

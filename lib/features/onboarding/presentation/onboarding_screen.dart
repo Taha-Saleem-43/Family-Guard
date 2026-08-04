@@ -3,8 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/app_state_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/providers/auth_providers.dart';
+import 'permission_gate_screen.dart';
 
-enum OnboardingStep { splash, carousel, auth, role, createCircle, childConsent }
+enum OnboardingStep { splash, carousel, auth, role, createCircle, childConsent, permissions }
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -19,6 +20,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   bool _isSignUp = true;
   bool _isLoading = false;
   String? _errorMessage;
+  // Carries the user's role to PermissionGateScreen after circle setup.
+  UserRole? _pendingRole;
 
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -109,11 +112,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
     final authService = ref.read(authServiceProvider);
     try {
-      await authService.createCircle(circleName: circleName);
-      ref.read(appStateProvider.notifier).completeOnboarding(
-        UserRole.parent,
-        circleName,
-      );
+      final circle = await authService.createCircle(circleName: circleName);
+      // Store circle name so completeOnboarding can use it after permissions.
+      ref.read(appStateProvider.notifier).setCircleName(circle.name);
+      setState(() {
+        _pendingRole = UserRole.parent;
+        _currentStep = OnboardingStep.permissions;
+      });
     } catch (e) {
       setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));
     } finally {
@@ -135,16 +140,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final authService = ref.read(authServiceProvider);
     try {
       final account = await authService.joinCircleByCode(inviteCode: code);
-      // Role is assigned server-side from the invite code — never user-selected
+      // Role is assigned server-side from the invite code — never user-selected.
       final role = account.role == UserRole.child ? UserRole.child : UserRole.parent;
-      if (role == UserRole.child) {
-        // Child must see consent screen before entering the app
-        setState(() {
-          _currentStep = OnboardingStep.childConsent;
-        });
-      } else {
-        ref.read(appStateProvider.notifier).completeOnboarding(UserRole.parent);
-      }
+      setState(() {
+        _pendingRole = role;
+        // Children already saw the consent screen; both roles go to permissions.
+        _currentStep = OnboardingStep.permissions;
+      });
     } catch (e) {
       setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));
     } finally {
@@ -178,6 +180,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         return _buildCreateCircle();
       case OnboardingStep.childConsent:
         return _buildChildConsent();
+      case OnboardingStep.permissions:
+        // Role is carried through state; the gate screen calls completeOnboarding.
+        return PermissionGateScreen(role: _pendingRole ?? UserRole.parent);
     }
   }
 

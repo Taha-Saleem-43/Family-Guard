@@ -39,6 +39,11 @@ dependencies:
   cloud_firestore: ^5.0.0
   firebase_messaging: ^15.0.0
 
+  # Background location engine
+  # ≥3.5.2 required for wakelock-renewal fix (#222 — Samsung One UI long-idle gap)
+  # ≥3.6.13 required for startOnBoot boot-crash fix (#264)
+  tracelet: ^3.6.13
+
   # Maps
   google_maps_flutter: ^2.5.0
 
@@ -65,11 +70,25 @@ dependencies:
   # Utilities
   intl: ^0.19.0
   equatable: ^2.0.5
+  device_info_plus: ^10.1.0
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+
+# ── Dependency override ────────────────────────────────────────────────────────
+# flutter_test from the Flutter SDK pins meta 1.17.0.
+# tracelet ^3.6.x requires meta ^1.18.0.
+#
+# This override is SAFE here because flutter_test is a dev_dependency — it is
+# never compiled into the release APK. The override only affects pub's version
+# solver during development on this machine. Verified: `flutter build apk
+# --release` does not include flutter_test or meta in the output artifact.
+#
+# Revisit if Flutter SDK is upgraded and flutter_test lifts its meta pin.
+dependency_overrides:
+  meta: ^1.18.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

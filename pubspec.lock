@@ -33,6 +33,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.2"
+  build_cli_annotations:
+    dependency: transitive
+    description:
+      name: build_cli_annotations
+      sha256: e563c2e01de8974566a1998410d3f6f03521788160a02503b0b1f1a46c7b3d95
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.1.1"
   characters:
     dependency: transitive
     description:
@@ -121,6 +129,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.7.14"
+  device_info_plus:
+    dependency: "direct main"
+    description:
+      name: device_info_plus
+      sha256: a7fd703482b391a87d60b6061d04dfdeab07826b96f9abd8f5ed98068acc0074
+      url: "https://pub.dev"
+    source: hosted
+    version: "10.1.2"
+  device_info_plus_platform_interface:
+    dependency: transitive
+    description:
+      name: device_info_plus_platform_interface
+      sha256: e1ea89119e34903dca74b883d0dd78eb762814f97fb6c76f35e9ff74d261a18f
+      url: "https://pub.dev"
+    source: hosted
+    version: "7.0.3"
   dio:
     dependency: "direct main"
     description:
@@ -294,6 +318,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.6.1"
+  flutter_rust_bridge:
+    dependency: transitive
+    description:
+      name: flutter_rust_bridge
+      sha256: e87d6b9ee934dcd24a128ccb2bd91905d2d5fe5c06245d6a8f5477d4907a437a
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.12.0"
   flutter_test:
     dependency: "direct dev"
     description: flutter
@@ -481,13 +513,13 @@ packages:
     source: hosted
     version: "0.13.0"
   meta:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
       name: meta
-      sha256: "23f08335362185a5ea2ad3a4e597f1375e78bce8a040df5c600c8d3552ef2394"
+      sha256: "307249ce4ff29d58a18e97f6345f539382eb9c9c29ecda628900f31de0443dd9"
       url: "https://pub.dev"
     source: hosted
-    version: "1.17.0"
+    version: "1.19.0"
   mime:
     dependency: transitive
     description:
@@ -853,6 +885,46 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.9.4"
+  tracelet:
+    dependency: "direct main"
+    description:
+      name: tracelet
+      sha256: c6b7d2004cbc48dfb22bc07e9c035c3fe8a3a88247235af2ececa6d75ab07b66
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.7.5"
+  tracelet_android:
+    dependency: transitive
+    description:
+      name: tracelet_android
+      sha256: ed9b12b039a4b104659de20e10cead88aba5fa46b542b08c034cb1e235dcafce
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.7.5"
+  tracelet_ios:
+    dependency: transitive
+    description:
+      name: tracelet_ios
+      sha256: "5ef2310600e0320752fa14c2a1259fd6686ebb98756c511c1472fe194421092d"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.7.5"
+  tracelet_platform_interface:
+    dependency: transitive
+    description:
+      name: tracelet_platform_interface
+      sha256: "10329ea03fda0f781bc6c50357f42de2fbb23f69d2a2bd37183ca2ee6053bba7"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.7.5"
+  tracelet_web:
+    dependency: transitive
+    description:
+      name: tracelet_web
+      sha256: "1e53b93958ac8c3e730cc25ebed68554e7354d2993878bce0c22cfd37021e000"
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.7.5"
   typed_data:
     dependency: transitive
     description:
@@ -885,6 +957,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.1"
+  win32:
+    dependency: transitive
+    description:
+      name: win32
+      sha256: d7cb55e04cd34096cd3a79b3330245f54cb96a370a1c27adb3c84b917de8b08e
+      url: "https://pub.dev"
+    source: hosted
+    version: "5.15.0"
+  win32_registry:
+    dependency: transitive
+    description:
+      name: win32_registry
+      sha256: "21ec76dfc731550fd3e2ce7a33a9ea90b828fdf19a5c3bcf556fa992cfa99852"
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.1.5"
   xdg_directories:
     dependency: transitive
     description:
