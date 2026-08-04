@@ -58,28 +58,33 @@ class SettingsScreen extends ConsumerWidget {
                   const Divider(height: 24),
                   // Role Switcher for preview / testing
                   Container(
+                    width: double.infinity,
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
                       color: AppColors.bg,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(color: AppColors.border),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
                           'Preview Role Experience',
                           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                         ),
-                        SegmentedButton<UserRole>(
-                          segments: const [
-                            ButtonSegment(value: UserRole.parent, label: Text('Parent')),
-                            ButtonSegment(value: UserRole.child, label: Text('Child')),
-                          ],
-                          selected: {appState.role},
-                          onSelectionChanged: (Set<UserRole> selection) {
-                            ref.read(appStateProvider.notifier).setRole(selection.first);
-                          },
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: SegmentedButton<UserRole>(
+                            segments: const [
+                              ButtonSegment(value: UserRole.parent, label: Text('Parent')),
+                              ButtonSegment(value: UserRole.child, label: Text('Child')),
+                            ],
+                            selected: {appState.role},
+                            onSelectionChanged: (Set<UserRole> selection) {
+                              ref.read(appStateProvider.notifier).setRole(selection.first);
+                            },
+                          ),
                         ),
                       ],
                     ),
@@ -216,14 +221,17 @@ class SettingsScreen extends ConsumerWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-            const SizedBox(height: 2),
-            Text(status, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
-          ],
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
+              const SizedBox(height: 2),
+              Text(status, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+            ],
+          ),
         ),
+        const SizedBox(width: 8),
         Icon(
           isGranted ? Icons.check_circle_rounded : Icons.warning_rounded,
           color: isGranted ? AppColors.teal : AppColors.sosRed,
