@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/app_state_provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../auth/domain/circle_model.dart';
 import '../../auth/providers/auth_providers.dart';
 import 'permission_gate_screen.dart';
 
-enum OnboardingStep { splash, carousel, auth, role, createCircle, childConsent, permissions }
+enum OnboardingStep { splash, carousel, auth, role, createCircle, circleCreated, joinCircle, childConsent, permissions }
 
 class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
@@ -20,6 +22,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   bool _isSignUp = true;
   bool _isLoading = false;
   String? _errorMessage;
+  CircleModel? _createdCircle;
   // Carries the user's role to PermissionGateScreen after circle setup.
   UserRole? _pendingRole;
 
@@ -69,10 +72,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final authService = ref.read(authServiceProvider);
     try {
       if (_isSignUp) {
-        await authService.signUp(
+        final displayName = _nameController.text.trim();
+        final account = await authService.signUp(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
-          displayName: _nameController.text.trim(),
+          displayName: displayName,
+        );
+        ref.read(appStateProvider.notifier).setUserSession(
+          userId: account.uid,
+          circleId: '',
+          userName: displayName,
         );
         // After sign-up, user picks role (create or join circle)
         setState(() => _currentStep = OnboardingStep.role);
@@ -80,6 +89,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         final account = await authService.signIn(
           email: _emailController.text.trim(),
           password: _passwordController.text.trim(),
+        );
+        ref.read(appStateProvider.notifier).setUserSession(
+          userId: account.uid,
+          circleId: account.circleId ?? '',
+          userName: account.displayName,
+          role: account.role,
         );
         // Signed-in user — check if they already have a circle
         if (account.circleId != null && account.circleId!.isNotEmpty) {
@@ -113,11 +128,19 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final authService = ref.read(authServiceProvider);
     try {
       final circle = await authService.createCircle(circleName: circleName);
-      // Store circle name so completeOnboarding can use it after permissions.
-      ref.read(appStateProvider.notifier).setCircleName(circle.name);
+      final uid = authService.currentUser?.uid ?? 'user_${DateTime.now().millisecondsSinceEpoch}';
+      ref.read(appStateProvider.notifier).setUserSession(
+        userId: uid,
+        circleId: circle.id,
+        circleName: circle.name,
+        childCode: circle.childInviteCode,
+        parentCode: circle.parentInviteCode,
+        role: UserRole.parent,
+      );
       setState(() {
+        _createdCircle = circle;
         _pendingRole = UserRole.parent;
-        _currentStep = OnboardingStep.permissions;
+        _currentStep = OnboardingStep.circleCreated;
       });
     } catch (e) {
       setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));
@@ -142,6 +165,12 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       final account = await authService.joinCircleByCode(inviteCode: code);
       // Role is assigned server-side from the invite code — never user-selected.
       final role = account.role == UserRole.child ? UserRole.child : UserRole.parent;
+      ref.read(appStateProvider.notifier).setUserSession(
+        userId: account.uid,
+        circleId: account.circleId ?? '',
+        userName: account.displayName,
+        role: role,
+      );
       setState(() {
         _pendingRole = role;
         // Children already saw the consent screen; both roles go to permissions.
@@ -178,6 +207,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         return _buildRoleSelection();
       case OnboardingStep.createCircle:
         return _buildCreateCircle();
+      case OnboardingStep.circleCreated:
+        return _buildCircleCreated();
+      case OnboardingStep.joinCircle:
+        return _buildJoinCircle();
       case OnboardingStep.childConsent:
         return _buildChildConsent();
       case OnboardingStep.permissions:
@@ -242,33 +275,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text(
-                'Already have an account? ',
-                style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 14),
-              ),
-              GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _isSignUp = false;
-                    _currentStep = OnboardingStep.auth;
-                  });
-                },
-                child: const Text(
-                  'Sign in',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    decoration: TextDecoration.underline,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 24),
         ],
       ),
     );
@@ -508,8 +515,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           _buildRoleCard(
             icon: Icons.family_restroom_rounded,
             iconColor: AppColors.primary,
-            title: "I'm a parent / guardian",
-            description: "Create a new family Circle and invite your children. You'll see everyone's location.",
+            title: "Create a new Circle",
+            description: "Create a new family Circle as a parent/creator and generate invite codes for your family.",
             onTap: () {
               setState(() {
                 _currentStep = OnboardingStep.createCircle;
@@ -518,15 +525,145 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           ),
           const SizedBox(height: 16),
           _buildRoleCard(
-            icon: Icons.child_care_rounded,
+            icon: Icons.vpn_key_rounded,
             iconColor: AppColors.teal,
-            title: "I'm joining a Circle",
-            description: "Enter an invite code from a parent. You'll see your own location and get place alerts.",
+            title: "Join an existing Circle",
+            description: "Enter an invite code (FAMILY-XXXX or PARENT-XXXX) to join a family Circle.",
             onTap: () {
               setState(() {
-                _currentStep = OnboardingStep.childConsent;
+                _errorMessage = null;
+                _currentStep = OnboardingStep.joinCircle;
               });
             },
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 5c. Join Circle Screen (Enter Invite Code)
+  Widget _buildJoinCircle() {
+    return Container(
+      key: const ValueKey('joinCircle'),
+      color: AppColors.bg,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          IconButton(
+            onPressed: () => setState(() => _currentStep = OnboardingStep.role),
+            icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textSecondary),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Enter Invite Code',
+            style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Enter the invite code provided by your family member.',
+            style: TextStyle(fontSize: 15, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 28),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (_errorMessage != null) ...[
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.sosRedLight,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppColors.sosRed.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.error_outline_rounded, color: AppColors.sosRed, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _errorMessage!,
+                              style: const TextStyle(color: AppColors.sosRed, fontSize: 13, fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                  ],
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.3), width: 1.5),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Family Invite Code',
+                          style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.primary),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _inviteCodeController,
+                          textCapitalization: TextCapitalization.characters,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 3, color: AppColors.textPrimary),
+                          decoration: InputDecoration(
+                            hintText: 'e.g. FAMILY-7K4X or PARENT-39M1',
+                            hintStyle: const TextStyle(color: AppColors.textMuted, fontSize: 14, letterSpacing: 0, fontWeight: FontWeight.w500),
+                            filled: true,
+                            fillColor: AppColors.bg,
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(color: AppColors.border),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              borderSide: const BorderSide(color: AppColors.primary, width: 2),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Row(
+                          children: [
+                            const Icon(Icons.info_outline_rounded, size: 16, color: AppColors.textSecondary),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                'Supports both FAMILY (Child) and PARENT (Co-Parent) codes.',
+                                style: TextStyle(fontSize: 12, color: AppColors.textSecondary.withValues(alpha: 0.9), fontWeight: FontWeight.w600),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _handleJoinCircle,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                          : const Text('Join Circle', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
           ),
         ],
       ),
@@ -605,22 +742,210 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             style: TextStyle(fontSize: 15, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 32),
-          _buildTextField(label: 'Circle name', controller: _circleNameController, hint: 'The Johnson Family'),
-          const SizedBox(height: 32),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  _buildTextField(label: 'Circle name', controller: _circleNameController, hint: 'The Johnson Family'),
+                  const SizedBox(height: 32),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _isLoading ? null : _handleCreateCircle,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        padding: const EdgeInsets.symmetric(vertical: 18),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                      ),
+                      child: _isLoading
+                          ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+                          : const Text('Create Circle', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // 5b. Circle Created Screen (Displays generated 6-character Invite Codes)
+  Widget _buildCircleCreated() {
+    final childCode = _createdCircle?.childInviteCode ?? 'FAMILY-XXXX';
+    final parentCode = _createdCircle?.parentInviteCode ?? 'PARENT-XXXX';
+
+    return Container(
+      key: const ValueKey('circleCreated'),
+      color: AppColors.bg,
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: const BoxDecoration(
+              color: AppColors.tealLight,
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.check_circle_rounded, size: 48, color: AppColors.teal),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Circle Created! 🎉',
+            style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Share this invite code with your family members so they can join your Circle.',
+            style: TextStyle(fontSize: 15, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+          ),
+          const SizedBox(height: 24),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  // Child Invite Code Card
+                  Card(
+                    color: AppColors.primaryLight,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    child: Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.child_care_rounded, color: AppColors.primary, size: 22),
+                              SizedBox(width: 8),
+                              Text('Child Member Invite Code', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  childCode,
+                                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 2, color: AppColors.textPrimary),
+                                ),
+                                ElevatedButton.icon(
+                                  onPressed: () {
+                                    Clipboard.setData(ClipboardData(text: childCode));
+                                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Child invite code ($childCode) copied to clipboard!'),
+                                        backgroundColor: AppColors.primary,
+                                        behavior: SnackBarBehavior.floating,
+                                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                      ),
+                                    );
+                                  },
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: AppColors.primary,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                  ),
+                                  icon: const Icon(Icons.copy_rounded, size: 16),
+                                  label: const Text('Copy', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  // Parent Invite Code Card
+                  Card(
+                    color: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                      side: const BorderSide(color: AppColors.border, width: 1.5),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(18),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            children: [
+                              Icon(Icons.supervisor_account_rounded, color: AppColors.textSecondary, size: 20),
+                              SizedBox(width: 8),
+                              Text('Co-Parent Invite Code (Full Admin)', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                parentCode,
+                                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: 2, color: AppColors.textPrimary),
+                              ),
+                              TextButton.icon(
+                                onPressed: () {
+                                  Clipboard.setData(ClipboardData(text: parentCode));
+                                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Co-Parent invite code ($parentCode) copied to clipboard!'),
+                                      backgroundColor: AppColors.primary,
+                                      behavior: SnackBarBehavior.floating,
+                                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.copy_rounded, size: 16),
+                                label: const Text('Copy', style: TextStyle(fontWeight: FontWeight.w700)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _isLoading ? null : _handleCreateCircle,
+              onPressed: () {
+                setState(() => _currentStep = OnboardingStep.permissions);
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.primary,
                 padding: const EdgeInsets.symmetric(vertical: 18),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
               ),
-              child: _isLoading
-                  ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                  : const Text('Create Circle', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+              child: const Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text('Continue to Permissions', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+                  SizedBox(width: 8),
+                  Icon(Icons.arrow_forward_rounded, size: 20),
+                ],
+              ),
             ),
           ),
+          const SizedBox(height: 8),
         ],
       ),
     );

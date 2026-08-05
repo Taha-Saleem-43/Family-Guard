@@ -1,68 +1,73 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
+import 'movement_activity.dart';
 
 enum UserRole { parent, child }
 
 class Member extends Equatable {
   final String id;
   final String name;
-  final String initials;
+  final String avatar;
   final UserRole role;
   final double? latitude;
   final double? longitude;
   final String address;
   final DateTime lastSeen;
   final int batteryLevel;
-  final double speed;
+  final bool isCharging;
+  final double speedMph;
+  final MovementActivity movementActivity;
   final Color pinColor;
-  final bool isMoving;
   final bool isStale;
 
   const Member({
     required this.id,
     required this.name,
-    required this.initials,
+    required this.avatar,
     required this.role,
     this.latitude,
     this.longitude,
     required this.address,
     required this.lastSeen,
     required this.batteryLevel,
-    required this.speed,
-    this.pinColor = AppColors.pinBlue,
-    this.isMoving = false,
+    this.isCharging = false,
+    required this.speedMph,
+    required this.movementActivity,
+    this.pinColor = AppColors.primary,
     this.isStale = false,
   });
 
   Member copyWith({
     String? id,
     String? name,
-    String? initials,
+    String? avatar,
     UserRole? role,
     double? latitude,
     double? longitude,
     String? address,
     DateTime? lastSeen,
     int? batteryLevel,
-    double? speed,
+    bool? isCharging,
+    double? speedMph,
+    MovementActivity? movementActivity,
     Color? pinColor,
-    bool? isMoving,
     bool? isStale,
   }) {
     return Member(
       id: id ?? this.id,
       name: name ?? this.name,
-      initials: initials ?? this.initials,
+      avatar: avatar ?? this.avatar,
       role: role ?? this.role,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
       address: address ?? this.address,
       lastSeen: lastSeen ?? this.lastSeen,
       batteryLevel: batteryLevel ?? this.batteryLevel,
-      speed: speed ?? this.speed,
+      isCharging: isCharging ?? this.isCharging,
+      speedMph: speedMph ?? this.speedMph,
+      movementActivity: movementActivity ?? this.movementActivity,
       pinColor: pinColor ?? this.pinColor,
-      isMoving: isMoving ?? this.isMoving,
       isStale: isStale ?? this.isStale,
     );
   }
@@ -71,16 +76,17 @@ class Member extends Equatable {
   List<Object?> get props => [
         id,
         name,
-        initials,
+        avatar,
         role,
         latitude,
         longitude,
         address,
         lastSeen,
         batteryLevel,
-        speed,
+        isCharging,
+        speedMph,
+        movementActivity,
         pinColor,
-        isMoving,
         isStale,
       ];
 }

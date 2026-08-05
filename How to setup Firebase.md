@@ -71,19 +71,17 @@ service cloud.firestore {
     }
 
     match /users/{userId} {
-      allow read: if isAuthenticated() && (
-        isOwner(userId) || 
-        getUserData().circleId == resource.data.circleId
-      );
-      allow create: if isAuthenticated() && isOwner(userId);
-      allow update: if isAuthenticated() && isOwner(userId) && 
-        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated() && isOwner(userId);
     }
 
     match /circles/{circleId} {
-      allow read: if isMemberOfCircle(circleId);
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated();
-      allow update: if isParentInCircle(circleId);
+      allow update: if isAuthenticated() && (
+        isMemberOfCircle(circleId) || 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds'])
+      );
     }
 
     match /locations/{userId} {
@@ -179,10 +177,28 @@ void main() async {
 
 ---
 
+---
+
+## ⏰ Step 6: Automated Client-Side 30-Day Auto-Purge (100% Free, Zero Console Setup)
+
+> [!TIP]
+> **Client-Side Deletion Benefits**:
+> - **100% Free ($0/month)**: Uses <0.01% of Firebase's 20,000 free daily deletes quota.
+> - **Zero Console Setup**: No need to touch Google Cloud Console or configure cloud TTL policies.
+> - **No GCP Billing Account Required**: Works directly on your free Firebase Spark plan forever!
+
+The **Family Guard** app executes an **Automated Client-Side Deletion Query** directly from Flutter whenever the app syncs or updates location:
+1. When syncing with Firestore, Flutter queries location and history documents where `lastSeen` is older than 30 days.
+2. The app issues a `batch.delete()` command to Firestore to remove expired documents.
+3. No manual GCP billing or Cloud Console TTL setup is required!
+
+---
+
 ## ✅ Quick Verification Checklist
 
 - [ ] Project created in Firebase Console.
 - [ ] Email/Password Authentication enabled.
 - [ ] Firestore Database created and `firestore.rules` published.
+- [ ] Automated client-side 30-day auto-purge enabled in Flutter service.
 - [ ] `flutterfire configure` command ran successfully.
 - [ ] `lib/firebase_options.dart` file generated.

@@ -4,40 +4,7 @@ import '../../../core/theme/app_colors.dart';
 class AlertsScreen extends StatelessWidget {
   const AlertsScreen({super.key});
 
-  final List<Map<String, dynamic>> _alerts = const [
-    {
-      'type': 'arrival',
-      'title': 'Emma arrived at Home',
-      'subtitle': 'Entered geofence (150m radius)',
-      'time': '3:15 PM',
-      'icon': Icons.where_to_vote_rounded,
-      'color': AppColors.teal,
-    },
-    {
-      'type': 'departure',
-      'title': 'Emma left Springfield High School',
-      'subtitle': 'Exited geofence',
-      'time': '2:45 PM',
-      'icon': Icons.directions_run_rounded,
-      'color': AppColors.primary,
-    },
-    {
-      'type': 'battery',
-      'title': 'Lucas phone battery low (15%)',
-      'subtitle': 'Remind Lucas to charge their device',
-      'time': '1:20 PM',
-      'icon': Icons.battery_alert_rounded,
-      'color': Color(0xFFF59E0B),
-    },
-    {
-      'type': 'arrival',
-      'title': 'Lucas arrived at Downtown Gym',
-      'subtitle': 'Entered geofence',
-      'time': '11:00 AM',
-      'icon': Icons.where_to_vote_rounded,
-      'color': AppColors.teal,
-    },
-  ];
+  final List<Map<String, dynamic>> _alerts = const [];
 
   @override
   Widget build(BuildContext context) {
@@ -46,18 +13,42 @@ class AlertsScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Activity Alerts'),
       ),
-      body: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: _alerts.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 12),
-        itemBuilder: (context, index) {
-          final alert = _alerts[index];
-          final icon = alert['icon'] as IconData;
-          final color = alert['color'] as Color;
-
-          return Card(
-            child: Padding(
+      body: _alerts.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    Icon(Icons.notifications_none_rounded, size: 64, color: AppColors.textMuted),
+                    SizedBox(height: 16),
+                    Text(
+                      'No Alerts Yet',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      'Safety alerts, place arrival/departures, and low battery notifications will appear here in real time.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : ListView.separated(
               padding: const EdgeInsets.all(16),
+              itemCount: _alerts.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final alert = _alerts[index];
+                final icon = alert['icon'] as IconData;
+                final color = alert['color'] as Color;
+
+                return Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+
               child: Row(
                 children: [
                   Container(

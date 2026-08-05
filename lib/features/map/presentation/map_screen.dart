@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:latlong2/latlong.dart';
+import '../../../core/models/member.dart';
+import '../../../core/models/movement_activity.dart';
 import '../../../core/providers/app_state_provider.dart';
+import '../../../core/providers/member_status_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../sos/presentation/widgets/sos_overlay.dart';
+import 'widgets/member_detail_sheet.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
   const MapScreen({super.key});
@@ -12,97 +18,91 @@ class MapScreen extends ConsumerStatefulWidget {
 }
 
 class _MapScreenState extends ConsumerState<MapScreen> {
+  final MapController _mapController = MapController();
   bool _showSOS = false;
-  String? _selectedMemberId = 'm1';
+  String? _selectedMemberId = 'm_self';
 
-  final List<Map<String, dynamic>> _mockMembers = [
-    {
-      'id': 'm1',
-      'name': 'Emma (You)',
-      'role': 'Child',
-      'avatar': '👩‍🦰',
-      'location': 'At School',
-      'address': '742 Evergreen Terrace, Springfield',
-      'battery': 88,
-      'status': 'Stationary',
-      'lastSeen': 'Just now',
-      'color': AppColors.teal,
-    },
-    {
-      'id': 'm2',
-      'name': 'Lucas',
-      'role': 'Child',
-      'avatar': '👦',
-      'location': 'En route to Soccer Practice',
-      'address': 'Main Street & 5th Ave',
-      'battery': 42,
-      'status': 'Moving (18 mph)',
-      'lastSeen': '2 mins ago',
-      'color': AppColors.primary,
-    },
-    {
-      'id': 'm3',
-      'name': 'Dad (Alex)',
-      'role': 'Parent',
-      'avatar': '👨',
-      'location': 'At Work',
-      'address': 'Tech Park Tower 4',
-      'battery': 95,
-      'status': 'Stationary',
-      'lastSeen': '5 mins ago',
-      'color': const Color(0xFF8B5CF6),
-    },
-  ];
+  LatLng _getInitialCenter(List<Member> members) {
+    for (final member in members) {
+      if (member.latitude != null && member.longitude != null) {
+        return LatLng(member.latitude!, member.longitude!);
+      }
+    }
+    return const LatLng(33.6844, 73.0479); // Pakistan default coordinates
+  }
 
   @override
   Widget build(BuildContext context) {
     final appState = ref.watch(appStateProvider);
     final isParent = appState.role == UserRole.parent;
+    final allMembers = ref.watch(memberStateProvider);
+    final selectedFilter = ref.watch(selectedActivityFilterProvider);
+
+    final selfId = appState.userId.isNotEmpty ? appState.userId : 'm_self';
+
+    // Parent sees all circle members on the map canvas. Child sees only their own pin.
+    final visibleMembers = isParent
+        ? allMembers
+        : allMembers.where((m) => m.id == selfId).toList();
+
+    // Apply activity filter if selected
+    final members = selectedFilter == null
+        ? visibleMembers
+        : visibleMembers.where((m) => m.movementActivity == selectedFilter).toList();
 
     return Stack(
       children: [
-        // Simulated Interactive Map Canvas
-        Container(
-          color: const Color(0xFFE2E8F0),
-          width: double.infinity,
-          height: double.infinity,
-          child: Stack(
-            children: [
-              // Grid background decoration for map look
-              CustomPaint(
-                size: Size.infinite,
-                painter: _MapGridPainter(),
-              ),
-              // Location Pin Markers
-              Positioned(
-                top: 180,
-                left: 100,
-                child: _buildMapPin(_mockMembers[0], isSelected: _selectedMemberId == 'm1'),
-              ),
-              if (isParent) ...[
-                Positioned(
-                  top: 280,
-                  right: 90,
-                  child: _buildMapPin(_mockMembers[1], isSelected: _selectedMemberId == 'm2'),
-                ),
-                Positioned(
-                  top: 120,
-                  right: 140,
-                  child: _buildMapPin(_mockMembers[2], isSelected: _selectedMemberId == 'm3'),
-                ),
-              ],
-            ],
+        // ── 100% Free OpenStreetMap Interactive Canvas ──────────────────
+        FlutterMap(
+          mapController: _mapController,
+          options: MapOptions(
+            initialCenter: _getInitialCenter(members),
+            initialZoom: 14.0,
+            minZoom: 3.0,
+            maxZoom: 18.0,
           ),
+          children: [
+            // Zero-API-Key TileLayer from OpenStreetMap
+            TileLayer(
+              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+              userAgentPackageName: 'com.familyguard.app',
+            ),
+
+            // Live Custom Pins for Circle Members
+            MarkerLayer(
+              markers: [
+                for (final member in members)
+                  if (member.latitude != null && member.longitude != null)
+                    Marker(
+                      point: LatLng(member.latitude!, member.longitude!),
+                      width: 140,
+                      height: 85,
+                      child: _buildMapPin(
+                        member,
+                        isSelected: _selectedMemberId == member.id,
+                      ),
+                    ),
+              ],
+            ),
+          ],
         ),
 
-        // Child Top Notification Chip
+        // ── Top Bar: Activity Filter Chips ────────────────────────────
+        Positioned(
+          top: isParent ? 16 : 64,
+          left: 12,
+          right: 12,
+          child: _buildActivityFilterHeader(visibleMembers, selectedFilter),
+        ),
+
+        // ── Child Top Notification Banner ─────────────────────────────
         if (!isParent)
           Positioned(
             top: 16,
             left: 16,
             right: 16,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(16),
@@ -117,30 +117,29 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               child: Row(
                 children: [
                   Container(
-                    width: 10,
-                    height: 10,
+                    width: 8,
+                    height: 8,
                     decoration: const BoxDecoration(
                       color: AppColors.teal,
                       shape: BoxShape.circle,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  const Expanded(
+                  const SizedBox(width: 8),
+                  Expanded(
                     child: Text(
-                      'Sharing location with Dad (Parent)',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                      'Sharing location as ${appState.userName} with Circle',
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                     ),
                   ),
-                  const Icon(Icons.info_outline_rounded, size: 18, color: AppColors.textMuted),
                 ],
               ),
             ),
           ),
 
-        // Floating SOS Button (Always Accessible)
+        // ── Floating SOS Button ───────────────────────────────────────
         Positioned(
           right: 16,
-          bottom: isParent ? 260 : 120,
+          bottom: isParent ? 275 : 120,
           child: GestureDetector(
             onTap: () => setState(() => _showSOS = true),
             child: Container(
@@ -157,19 +156,19 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   ),
                 ],
               ),
-              child: const Icon(Icons.sos_rounded, size: 32, color: Colors.white),
+              child: const Icon(Icons.sos_rounded, size: 30, color: Colors.white),
             ),
           ),
         ),
 
-        // Parent Bottom Member Sheet
+        // ── Bottom Member Cards Sheet (Parent View) ──────────────────
         if (isParent)
           Positioned(
             left: 0,
             right: 0,
             bottom: 0,
             child: Container(
-              height: 240,
+              height: 260,
               decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
@@ -177,13 +176,13 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                   BoxShadow(color: Colors.black12, blurRadius: 16, offset: Offset(0, -4)),
                 ],
               ),
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Center(
                     child: Container(
-                      width: 40,
+                      width: 36,
                       height: 4,
                       decoration: BoxDecoration(
                         color: AppColors.border,
@@ -191,155 +190,394 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text(
                         appState.circleName,
-                        style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
+                        style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
                       ),
                       Text(
-                        '${_mockMembers.length} members',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textMuted),
+                        'Live Circle Members',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.grey.shade600),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 10),
                   Expanded(
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: _mockMembers.length,
-                      separatorBuilder: (context, index) => const SizedBox(width: 12),
-                      itemBuilder: (context, index) {
-                        final member = _mockMembers[index];
-                        final isSelected = _selectedMemberId == member['id'];
+                    child: members.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No members with selected activity',
+                              style: TextStyle(fontSize: 13, color: AppColors.textMuted, fontWeight: FontWeight.w600),
+                            ),
+                          )
+                        : ListView.separated(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: members.length,
+                            separatorBuilder: (context, index) => const SizedBox(width: 12),
+                            itemBuilder: (context, index) {
+                              final member = members[index];
+                              final isSelected = _selectedMemberId == member.id;
 
-                        return GestureDetector(
-                          onTap: () => setState(() => _selectedMemberId = member['id']),
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            width: 160,
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: isSelected ? AppColors.primaryLight : AppColors.bg,
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                color: isSelected ? AppColors.primary : AppColors.border,
-                                width: isSelected ? 2 : 1,
-                              ),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(member['avatar'], style: const TextStyle(fontSize: 24)),
-                                    const Spacer(),
-                                    Icon(Icons.battery_4_bar_rounded, size: 16, color: (member['battery'] as int) < 50 ? AppColors.sosRed : AppColors.teal),
-                                    Text('${member['battery']}%', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold)),
-                                  ],
-                                ),
-                                const Spacer(),
-                                Text(
-                                  member['name'],
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  member['location'],
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
-                                ),
-                              ],
-                            ),
+                              return _buildMemberSheetCard(member, isSelected);
+                            },
                           ),
-                        );
-                      },
-                    ),
                   ),
                 ],
               ),
             ),
           ),
 
-        // SOS Overlay Trigger
+        // ── SOS Overlay ─────────────────────────────────────────────
         if (_showSOS)
           SOSOverlay(
             onCancel: () => setState(() => _showSOS = false),
-            onActivated: () {
-              // SOS alert callback
-            },
+            onActivated: () {},
           ),
       ],
     );
   }
 
-  Widget _buildMapPin(Map<String, dynamic> member, {required bool isSelected}) {
-    final color = member['color'] as Color;
+  // ── Activity Filter Header ────────────────────────────────────────
+  Widget _buildActivityFilterHeader(List<Member> allMembers, MovementActivity? selectedFilter) {
+    int countFor(MovementActivity? filter) {
+      if (filter == null) return allMembers.length;
+      return allMembers.where((m) => m.movementActivity == filter).length;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            _buildFilterChip(
+              label: 'All (${countFor(null)})',
+              emoji: '👥',
+              isSelected: selectedFilter == null,
+              color: AppColors.primary,
+              onTap: () => ref.read(selectedActivityFilterProvider.notifier).state = null,
+            ),
+            const SizedBox(width: 6),
+            _buildFilterChip(
+              label: 'Stationary (${countFor(MovementActivity.stationary)})',
+              emoji: MovementActivity.stationary.emoji,
+              isSelected: selectedFilter == MovementActivity.stationary,
+              color: MovementActivity.stationary.color,
+              onTap: () => ref.read(selectedActivityFilterProvider.notifier).state = MovementActivity.stationary,
+            ),
+            const SizedBox(width: 6),
+            _buildFilterChip(
+              label: 'Walking (${countFor(MovementActivity.walking)})',
+              emoji: MovementActivity.walking.emoji,
+              isSelected: selectedFilter == MovementActivity.walking,
+              color: MovementActivity.walking.color,
+              onTap: () => ref.read(selectedActivityFilterProvider.notifier).state = MovementActivity.walking,
+            ),
+            const SizedBox(width: 6),
+            _buildFilterChip(
+              label: 'Driving (${countFor(MovementActivity.driving)})',
+              emoji: MovementActivity.driving.emoji,
+              isSelected: selectedFilter == MovementActivity.driving,
+              color: MovementActivity.driving.color,
+              onTap: () => ref.read(selectedActivityFilterProvider.notifier).state = MovementActivity.driving,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterChip({
+    required String label,
+    required String emoji,
+    required bool isSelected,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? color : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isSelected ? color : Colors.grey.shade300,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(emoji, style: const TextStyle(fontSize: 13)),
+            const SizedBox(width: 4),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                color: isSelected ? Colors.white : AppColors.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Map Pin Marker Widget ─────────────────────────────────────────
+  Widget _buildMapPin(Member member, {required bool isSelected}) {
+    final activity = member.movementActivity;
+    final batColor = BatteryHelper.getColor(member.batteryLevel);
+    final batIcon = BatteryHelper.getIcon(member.batteryLevel, isCharging: member.isCharging);
 
     return GestureDetector(
-      onTap: () => setState(() => _selectedMemberId = member['id']),
+      onTap: () {
+        setState(() => _selectedMemberId = member.id);
+        if (member.latitude != null && member.longitude != null) {
+          _mapController.move(LatLng(member.latitude!, member.longitude!), 15.5);
+        }
+        MemberDetailSheet.show(context, member);
+      },
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
+          // Avatar with Floating Movement Badge
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(3),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: member.pinColor, width: 3),
+                  boxShadow: [
+                    BoxShadow(
+                      color: member.pinColor.withValues(alpha: 0.35),
+                      blurRadius: isSelected ? 14 : 6,
+                      spreadRadius: isSelected ? 3 : 1,
+                    ),
+                  ],
+                ),
+                child: CircleAvatar(
+                  radius: isSelected ? 20 : 16,
+                  backgroundColor: member.pinColor.withValues(alpha: 0.15),
+                  child: Text(member.avatar, style: TextStyle(fontSize: isSelected ? 20 : 16)),
+                ),
+              ),
+
+              // Floating Movement Indicator Badge (🛑 / 🚶 / 🚗)
+              Positioned(
+                right: -4,
+                top: -4,
+                child: Container(
+                  padding: const EdgeInsets.all(3),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: activity.color, width: 1.5),
+                    boxShadow: [
+                      BoxShadow(
+                        color: activity.color.withValues(alpha: 0.3),
+                        blurRadius: 4,
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    activity.emoji,
+                    style: const TextStyle(fontSize: 10),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 2),
+
+          // Member Name + Battery Badge Pill
           Container(
-            padding: const EdgeInsets.all(4),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
             decoration: BoxDecoration(
               color: Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(color: color, width: 3),
-              boxShadow: [
-                BoxShadow(
-                  color: color.withValues(alpha: 0.3),
-                  blurRadius: isSelected ? 12 : 6,
-                  spreadRadius: isSelected ? 3 : 1,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: isSelected ? member.pinColor : Colors.grey.shade200, width: isSelected ? 1.5 : 1.0),
+              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    member.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
+                  ),
+                ),
+                const SizedBox(width: 3),
+                // Live Battery Level % Badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: batColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(batIcon, size: 10, color: batColor),
+                      const SizedBox(width: 2),
+                      Text(
+                        '${member.batteryLevel}%',
+                        style: TextStyle(
+                          fontSize: 8,
+                          fontWeight: FontWeight.w900,
+                          color: batColor,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
-            ),
-            child: CircleAvatar(
-              radius: isSelected ? 22 : 18,
-              backgroundColor: color.withValues(alpha: 0.15),
-              child: Text(member['avatar'], style: TextStyle(fontSize: isSelected ? 22 : 18)),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-            ),
-            child: Text(
-              member['name'],
-              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
             ),
           ),
         ],
       ),
     );
   }
-}
 
-class _MapGridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = const Color(0xFFCBD5E1)
-      ..strokeWidth = 1.0;
+  // ── Member Card in Bottom Sheet ───────────────────────────────────
+  Widget _buildMemberSheetCard(Member member, bool isSelected) {
+    final activity = member.movementActivity;
+    final batColor = BatteryHelper.getColor(member.batteryLevel);
+    final batIcon = BatteryHelper.getIcon(member.batteryLevel, isCharging: member.isCharging);
 
-    const step = 40.0;
-    for (double x = 0; x < size.width; x += step) {
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+    String speedText = '';
+    if (activity == MovementActivity.walking) {
+      speedText = ' • ${member.speedMph.toStringAsFixed(1)} mph';
+    } else if (activity == MovementActivity.driving) {
+      speedText = ' • ${member.speedMph.toStringAsFixed(0)} mph';
     }
-    for (double y = 0; y < size.height; y += step) {
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
+
+    return GestureDetector(
+      onTap: () {
+        setState(() => _selectedMemberId = member.id);
+        if (member.latitude != null && member.longitude != null) {
+          _mapController.move(LatLng(member.latitude!, member.longitude!), 15.5);
+        }
+        MemberDetailSheet.show(context, member);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 175,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primaryLight : AppColors.bg,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: isSelected ? AppColors.primary : AppColors.border,
+            width: isSelected ? 2 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Top Row: Avatar & Live Battery Badge
+            Row(
+              children: [
+                Text(member.avatar, style: const TextStyle(fontSize: 24)),
+                const Spacer(),
+
+                // Live Battery Level Badge
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: batColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: batColor.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(batIcon, size: 13, color: batColor),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${member.batteryLevel}%',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: batColor),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 8),
+
+            // Member Name
+            Text(
+              member.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
+            ),
+
+            const SizedBox(height: 4),
+
+            // Movement Activity Badge
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: activity.bgColor,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: activity.color.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(activity.emoji, style: const TextStyle(fontSize: 12)),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      '${activity.label}$speedText',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: activity.color,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const Spacer(),
+
+            // Location Address
+            Text(
+              member.address,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 10, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+            ),
+          ],
+        ),
+      ),
+    );
   }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

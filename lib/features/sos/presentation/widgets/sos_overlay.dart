@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:vibration/vibration.dart';
 import '../../../../core/theme/app_colors.dart';
 
 class SOSOverlay extends StatefulWidget {
@@ -19,29 +22,83 @@ class SOSOverlay extends StatefulWidget {
 class _SOSOverlayState extends State<SOSOverlay> {
   int _countdown = 3;
   Timer? _timer;
+  Timer? _vibrationTimer;
   bool _isActive = false;
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
   @override
   void initState() {
     super.initState();
+    _playCountdownTick();
     _startCountdown();
+  }
+
+  void _playCountdownTick() {
+    HapticFeedback.heavyImpact();
   }
 
   void _startCountdown() {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_countdown > 1) {
+        _playCountdownTick();
         setState(() => _countdown--);
       } else {
         _timer?.cancel();
-        setState(() => _isActive = true);
-        widget.onActivated();
+        _triggerEmergencyAlert();
       }
     });
   }
 
+  Future<void> _triggerEmergencyAlert() async {
+    setState(() => _isActive = true);
+    widget.onActivated();
+
+    // 1. Play Emergency Siren Sound in loop
+    try {
+      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+      await _audioPlayer.play(AssetSource('sounds/siren.wav'));
+    } catch (e) {
+      debugPrint('Error playing siren sound: $e');
+    }
+
+    // 2. Trigger Continuous Alarm Vibration
+    try {
+      final hasVibrator = await Vibration.hasVibrator();
+      if (hasVibrator == true) {
+        Vibration.vibrate(pattern: [0, 600, 200, 600], repeat: 0);
+      } else {
+        _vibrationTimer = Timer.periodic(const Duration(milliseconds: 800), (_) {
+          HapticFeedback.vibrate();
+        });
+      }
+    } catch (e) {
+      debugPrint('Error starting vibration: $e');
+      _vibrationTimer = Timer.periodic(const Duration(milliseconds: 800), (_) {
+        HapticFeedback.vibrate();
+      });
+    }
+  }
+
+  void _stopEmergencyAlert() {
+    _timer?.cancel();
+    _vibrationTimer?.cancel();
+    try {
+      Vibration.cancel();
+    } catch (_) {}
+    try {
+      _audioPlayer.stop();
+    } catch (_) {}
+  }
+
+  void _handleCancel() {
+    _stopEmergencyAlert();
+    widget.onCancel();
+  }
+
   @override
   void dispose() {
-    _timer?.cancel();
+    _stopEmergencyAlert();
+    _audioPlayer.dispose();
     super.dispose();
   }
 
@@ -94,7 +151,7 @@ class _SOSOverlayState extends State<SOSOverlay> {
                     padding: const EdgeInsets.symmetric(vertical: 18),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
-                  onPressed: widget.onCancel,
+                  onPressed: _handleCancel,
                   child: const Text('CANCEL SOS', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
                 ),
               ),
@@ -121,7 +178,7 @@ class _SOSOverlayState extends State<SOSOverlay> {
                     padding: const EdgeInsets.symmetric(vertical: 18),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
-                  onPressed: widget.onCancel,
+                  onPressed: _handleCancel,
                   child: const Text('Resolve / Dismiss Alert', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
                 ),
               ),
@@ -133,3 +190,4 @@ class _SOSOverlayState extends State<SOSOverlay> {
     );
   }
 }
+

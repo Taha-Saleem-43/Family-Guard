@@ -50,11 +50,24 @@ void main() async {
   );
 }
 
-class FamilyGuardApp extends ConsumerWidget {
+class FamilyGuardApp extends ConsumerStatefulWidget {
   const FamilyGuardApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<FamilyGuardApp> createState() => _FamilyGuardAppState();
+}
+
+class _FamilyGuardAppState extends ConsumerState<FamilyGuardApp> {
+  @override
+  void initState() {
+    super.initState();
+    Future.microtask(() {
+      ref.read(appStateProvider.notifier).checkRestoreSession();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final appState = ref.watch(appStateProvider);
 
     return MaterialApp(
@@ -67,3 +80,4 @@ class FamilyGuardApp extends ConsumerWidget {
     );
   }
 }
+

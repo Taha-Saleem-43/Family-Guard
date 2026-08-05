@@ -15,6 +15,9 @@
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
     <!-- SCHEDULE_EXACT_ALARM: enables precise heartbeat alarms for periodic mode (Android 12+) -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <!-- VIBRATE: required for emergency alarm vibration -->
+    <uses-permission android:name="android.permission.VIBRATE"/>
+
 
     <application
         android:label="family_guard"
@@ -58,6 +61,22 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="geo" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="google.navigation" />
         </intent>
     </queries>
 </manifest>

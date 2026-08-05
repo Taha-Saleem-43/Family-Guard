@@ -56,8 +56,8 @@ class LocationService {
       tl.Config.balanced().copyWith(
         geo: const tl.GeoConfig(
           desiredAccuracy: tl.DesiredAccuracy.high,
-          // 0-metre filter = emit on every available fix.
-          distanceFilter: 0.0,
+          // 10-metre filter = ignore minor static GPS drift on-device.
+          distanceFilter: 10.0,
         ),
         app: const tl.AppConfig(
           // Keep tracking when user swipes app away or reboots device.

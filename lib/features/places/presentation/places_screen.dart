@@ -9,38 +9,7 @@ class PlacesScreen extends StatefulWidget {
 }
 
 class _PlacesScreenState extends State<PlacesScreen> {
-  final List<Map<String, dynamic>> _places = [
-    {
-      'name': 'Home',
-      'category': 'Home',
-      'address': '742 Evergreen Terrace',
-      'radius': '150 meters',
-      'icon': Icons.home_rounded,
-      'color': AppColors.teal,
-      'notifyArrive': true,
-      'notifyLeave': true,
-    },
-    {
-      'name': 'Springfield High School',
-      'category': 'School',
-      'address': '123 Education Lane',
-      'radius': '200 meters',
-      'icon': Icons.school_rounded,
-      'color': AppColors.primary,
-      'notifyArrive': true,
-      'notifyLeave': true,
-    },
-    {
-      'name': 'Downtown Gym',
-      'category': 'Custom',
-      'address': '45 Fitness Boulevard',
-      'radius': '100 meters',
-      'icon': Icons.fitness_center_rounded,
-      'color': const Color(0xFF8B5CF6),
-      'notifyArrive': false,
-      'notifyLeave': true,
-    },
-  ];
+  final List<Map<String, dynamic>> _places = [];
 
   @override
   Widget build(BuildContext context) {
@@ -55,14 +24,50 @@ class _PlacesScreenState extends State<PlacesScreen> {
           ),
         ],
       ),
-      body: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: _places.length,
-        separatorBuilder: (context, index) => const SizedBox(height: 12),
-        itemBuilder: (context, index) {
-          final place = _places[index];
-          final icon = place['icon'] as IconData;
-          final color = place['color'] as Color;
+      body: _places.isEmpty
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.place_outlined, size: 64, color: AppColors.textMuted),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'No Saved Places Yet',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Add places like Home, School, or Work to receive arrival and departure alerts for your Circle.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
+                    ),
+                    const SizedBox(height: 24),
+                    ElevatedButton.icon(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                      onPressed: () => _showAddPlaceDialog(context),
+                      icon: const Icon(Icons.add_location_alt_rounded, size: 20),
+                      label: const Text('Add Saved Place', style: TextStyle(fontWeight: FontWeight.w800)),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: _places.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 12),
+              itemBuilder: (context, index) {
+                final place = _places[index];
+                final icon = place['icon'] as IconData;
+                final color = place['color'] as Color;
+
 
           return Card(
             child: Padding(

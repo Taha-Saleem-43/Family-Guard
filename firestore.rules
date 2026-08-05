@@ -27,20 +27,18 @@ service cloud.firestore {
 
     // Users Collection
     match /users/{userId} {
-      allow read: if isAuthenticated() && (
-        isOwner(userId) || 
-        getUserData().circleId == resource.data.circleId
-      );
-      allow create: if isAuthenticated() && isOwner(userId);
-      allow update: if isAuthenticated() && isOwner(userId) && 
-        (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']));
+      allow read: if isAuthenticated();
+      allow create, update, delete: if isAuthenticated() && isOwner(userId);
     }
 
     // Circles Collection
     match /circles/{circleId} {
-      allow read: if isMemberOfCircle(circleId);
+      allow read: if isAuthenticated();
       allow create: if isAuthenticated();
-      allow update: if isParentInCircle(circleId);
+      allow update: if isAuthenticated() && (
+        isMemberOfCircle(circleId) || 
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds'])
+      );
     }
 
     // Locations & Location History

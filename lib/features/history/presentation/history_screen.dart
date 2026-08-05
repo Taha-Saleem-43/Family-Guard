@@ -11,40 +11,7 @@ class HistoryScreen extends StatefulWidget {
 class _HistoryScreenState extends State<HistoryScreen> {
   int _selectedTab = 0; // 0: Today, 1: 7 Days, 2: 30 Days
 
-  final List<Map<String, dynamic>> _mockTimeline = [
-    {
-      'time': '3:15 PM',
-      'title': 'Arrived at Home',
-      'address': '742 Evergreen Terrace',
-      'duration': 'Current location',
-      'icon': Icons.home_rounded,
-      'color': AppColors.teal,
-    },
-    {
-      'time': '2:45 PM - 3:15 PM',
-      'title': 'In Transit (Drive)',
-      'address': 'Springfield High School ➔ Home',
-      'duration': '3.2 miles • 30 mins',
-      'icon': Icons.directions_car_rounded,
-      'color': AppColors.primary,
-    },
-    {
-      'time': '8:30 AM - 2:45 PM',
-      'title': 'Springfield High School',
-      'address': '123 Education Lane',
-      'duration': '6 hrs 15 mins',
-      'icon': Icons.school_rounded,
-      'color': const Color(0xFF8B5CF6),
-    },
-    {
-      'time': '8:10 AM - 8:30 AM',
-      'title': 'In Transit (Walk)',
-      'address': 'Home ➔ Springfield High School',
-      'duration': '0.8 miles • 20 mins',
-      'icon': Icons.directions_walk_rounded,
-      'color': AppColors.primary,
-    },
-  ];
+  final List<Map<String, dynamic>> _timeline = [];
 
   @override
   Widget build(BuildContext context) {
@@ -119,71 +86,95 @@ class _HistoryScreenState extends State<HistoryScreen> {
             ),
           ),
 
-          // Timeline Log List
+          // Timeline Log List / Empty State
           Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              itemCount: _mockTimeline.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final item = _mockTimeline[index];
-                final icon = item['icon'] as IconData;
-                final color = item['color'] as Color;
-
-                return Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: color.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(14),
+            child: _timeline.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: const [
+                          Icon(Icons.history_toggle_off_rounded, size: 64, color: AppColors.textMuted),
+                          SizedBox(height: 16),
+                          Text(
+                            'No Location History Yet',
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                           ),
-                          child: Icon(icon, size: 24, color: color),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
+                          SizedBox(height: 8),
+                          Text(
+                            'Location movements and timeline trips will appear here as your Circle travels.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    itemCount: _timeline.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final item = _timeline[index];
+                      final icon = item['icon'] as IconData;
+                      final color = item['color'] as Color;
+
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Row(
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Text(
-                                    item['title'],
-                                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
-                                  ),
-                                  Text(
-                                    item['time'],
-                                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textMuted),
-                                  ),
-                                ],
+                              Container(
+                                padding: const EdgeInsets.all(10),
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(14),
+                                ),
+                                child: Icon(icon, size: 24, color: color),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                item['address'],
-                                style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                item['duration'],
-                                style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w800),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          item['title'],
+                                          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
+                                        ),
+                                        Text(
+                                          item['time'],
+                                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textMuted),
+                                        ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      item['address'],
+                                      style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      item['duration'],
+                                      style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w800),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ],
                           ),
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
           ),
         ],
       ),
     );
   }
+
 }
