@@ -1,30 +1,28 @@
 import 'dart:async';
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:vibration/vibration.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../providers/sos_provider.dart';
 
-class SOSOverlay extends StatefulWidget {
+class SOSOverlay extends ConsumerStatefulWidget {
   final VoidCallback onCancel;
-  final VoidCallback onActivated;
+  final VoidCallback? onActivated;
 
   const SOSOverlay({
     super.key,
     required this.onCancel,
-    required this.onActivated,
+    this.onActivated,
   });
 
   @override
-  State<SOSOverlay> createState() => _SOSOverlayState();
+  ConsumerState<SOSOverlay> createState() => _SOSOverlayState();
 }
 
-class _SOSOverlayState extends State<SOSOverlay> {
+class _SOSOverlayState extends ConsumerState<SOSOverlay> {
   int _countdown = 3;
   Timer? _timer;
-  Timer? _vibrationTimer;
   bool _isActive = false;
-  final AudioPlayer _audioPlayer = AudioPlayer();
 
   @override
   void initState() {
@@ -41,7 +39,7 @@ class _SOSOverlayState extends State<SOSOverlay> {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_countdown > 1) {
         _playCountdownTick();
-        setState(() => _countdown--);
+        if (mounted) setState(() => _countdown--);
       } else {
         _timer?.cancel();
         _triggerEmergencyAlert();
@@ -50,60 +48,36 @@ class _SOSOverlayState extends State<SOSOverlay> {
   }
 
   Future<void> _triggerEmergencyAlert() async {
+    if (!mounted) return;
     setState(() => _isActive = true);
-    widget.onActivated();
+    widget.onActivated?.call();
 
-    // 1. Play Emergency Siren Sound in loop
-    try {
-      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
-      await _audioPlayer.play(AssetSource('sounds/siren.wav'));
-    } catch (e) {
-      debugPrint('Error playing siren sound: $e');
-    }
-
-    // 2. Trigger Continuous Alarm Vibration
-    try {
-      final hasVibrator = await Vibration.hasVibrator();
-      if (hasVibrator == true) {
-        Vibration.vibrate(pattern: [0, 600, 200, 600], repeat: 0);
-      } else {
-        _vibrationTimer = Timer.periodic(const Duration(milliseconds: 800), (_) {
-          HapticFeedback.vibrate();
-        });
-      }
-    } catch (e) {
-      debugPrint('Error starting vibration: $e');
-      _vibrationTimer = Timer.periodic(const Duration(milliseconds: 800), (_) {
-        HapticFeedback.vibrate();
-      });
-    }
+    // Trigger backend SOS via Riverpod (Silent Mode on sender device: no audio siren or vibration)
+    await ref.read(sosProvider.notifier).triggerEmergency();
   }
 
-  void _stopEmergencyAlert() {
+  Future<void> _handleResolve() async {
     _timer?.cancel();
-    _vibrationTimer?.cancel();
-    try {
-      Vibration.cancel();
-    } catch (_) {}
-    try {
-      _audioPlayer.stop();
-    } catch (_) {}
+    await ref.read(sosProvider.notifier).resolveEmergency();
+    widget.onCancel();
   }
 
-  void _handleCancel() {
-    _stopEmergencyAlert();
+  void _handleCancelCountdown() {
+    _timer?.cancel();
     widget.onCancel();
   }
 
   @override
   void dispose() {
-    _stopEmergencyAlert();
-    _audioPlayer.dispose();
+    _timer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final sosState = ref.watch(sosProvider);
+    final durationFormatted = sosState.formattedActiveDuration;
+
     return Container(
       color: AppColors.sosRed,
       width: double.infinity,
@@ -123,9 +97,9 @@ class _SOSOverlayState extends State<SOSOverlay> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Notifying all family members with your live location...',
+                'Broadcasting emergency alert & live location to family circle...',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Colors.white70, fontWeight: FontWeight.w500),
+                style: TextStyle(fontSize: 15, color: Colors.white70, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 40),
               Container(
@@ -151,7 +125,7 @@ class _SOSOverlayState extends State<SOSOverlay> {
                     padding: const EdgeInsets.symmetric(vertical: 18),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
-                  onPressed: _handleCancel,
+                  onPressed: _handleCancelCountdown,
                   child: const Text('CANCEL SOS', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
                 ),
               ),
@@ -163,10 +137,42 @@ class _SOSOverlayState extends State<SOSOverlay> {
                 style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1),
               ),
               const SizedBox(height: 12),
+              // Live SOS duration ticker display
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.25),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      width: 10,
+                      height: 10,
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Active Duration • $durationFormatted',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        fontFeatures: [FontFeature.tabularFigures()],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
               Text(
                 'Emergency broadcast sent to all Circle members.\nLive high-accuracy location tracking active.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 16, color: Colors.white.withValues(alpha: 0.9), fontWeight: FontWeight.w600, height: 1.4),
+                style: TextStyle(fontSize: 15, color: Colors.white.withValues(alpha: 0.9), fontWeight: FontWeight.w600, height: 1.4),
               ),
               const Spacer(),
               SizedBox(
@@ -178,7 +184,7 @@ class _SOSOverlayState extends State<SOSOverlay> {
                     padding: const EdgeInsets.symmetric(vertical: 18),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
-                  onPressed: _handleCancel,
+                  onPressed: _handleResolve,
                   child: const Text('Resolve / Dismiss Alert', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
                 ),
               ),
@@ -190,4 +196,3 @@ class _SOSOverlayState extends State<SOSOverlay> {
     );
   }
 }
-

@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/auth/services/auth_service.dart';
 import '../models/member.dart';
+import '../services/history_cron_service.dart';
 import '../services/user_session_service.dart';
 export '../models/member.dart' show UserRole;
 
@@ -139,6 +140,9 @@ class AppStateNotifier extends StateNotifier<AppState> {
       childInviteCode: childCode != null && childCode.isNotEmpty ? childCode : state.childInviteCode,
       parentInviteCode: parentCode != null && parentCode.isNotEmpty ? parentCode : state.parentInviteCode,
     );
+    if (userId.isNotEmpty) {
+      HistoryCronService.instance.initCronJob(userId);
+    }
     if (circleId.isNotEmpty) {
       _subscribeToCircle(circleId);
     }
@@ -219,6 +223,7 @@ class AppStateNotifier extends StateNotifier<AppState> {
   @override
   void dispose() {
     _circleSub?.cancel();
+    HistoryCronService.instance.dispose();
     super.dispose();
   }
 }

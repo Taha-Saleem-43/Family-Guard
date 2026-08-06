@@ -27,7 +27,9 @@ class SettingsScreen extends ConsumerWidget {
             children: [
               const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
               const SizedBox(width: 8),
-              Text('$label code ($code) copied to clipboard!'),
+              Expanded(
+                child: Text('$label code ($code) copied to clipboard!'),
+              ),
             ],
           ),
           backgroundColor: AppColors.primary,

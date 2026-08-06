@@ -90,12 +90,13 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
           final existing = updatedList[existingIndex];
           final isSelf = remote.id == currentUid || remote.id == 'm_self' || existing.id == 'm_self';
           if (isSelf) {
-            // Keep local live status (battery, location, activity) for self
+            // Keep local live status (battery, location, activity) for self but sync remote properties
             updatedList[existingIndex] = existing.copyWith(
               name: remote.name,
               avatar: remote.avatar,
               role: remote.role,
               pinColor: remote.pinColor,
+              isSosActive: remote.isSosActive,
             );
           } else {
             updatedList[existingIndex] = remote.copyWith(
@@ -112,6 +113,23 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
     }, onError: (e) {
       debugPrint('[MemberStateNotifier] Circle stream error: $e');
     });
+  }
+
+  /// Sets self SOS active state and updates pin border color back to default when false
+  void setSelfSosActive(bool isActive) {
+    final appState = _ref.read(appStateProvider);
+    final selfId = appState.userId.isNotEmpty ? appState.userId : 'm_self';
+
+    state = state.map((member) {
+      if (member.id == selfId || member.id == 'm_self') {
+        final defaultPinColor = member.role == UserRole.parent ? AppColors.primary : AppColors.teal;
+        return member.copyWith(
+          isSosActive: isActive,
+          pinColor: isActive ? AppColors.sosRed : defaultPinColor,
+        );
+      }
+      return member;
+    }).toList();
   }
 
   Future<void> _listenToDeviceBattery() async {

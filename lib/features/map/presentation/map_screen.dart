@@ -4,10 +4,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../core/models/member.dart';
 import '../../../core/models/movement_activity.dart';
+import '../../../core/models/place.dart';
 import '../../../core/providers/app_state_provider.dart';
 import '../../../core/providers/member_status_provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../places/providers/places_provider.dart';
 import '../../sos/presentation/widgets/sos_overlay.dart';
+import '../../sos/presentation/widgets/sos_receiver_dialog.dart';
+import '../../sos/providers/sos_provider.dart';
 import 'widgets/member_detail_sheet.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
@@ -37,6 +41,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final isParent = appState.role == UserRole.parent;
     final allMembers = ref.watch(memberStateProvider);
     final selectedFilter = ref.watch(selectedActivityFilterProvider);
+    final sosState = ref.watch(sosProvider);
+
+    // Watch Saved Places for the circle
+    final placesAsync = ref.watch(circlePlacesStreamProvider);
+    final savedPlaces = placesAsync.value ?? <Place>[];
 
     final selfId = appState.userId.isNotEmpty ? appState.userId : 'm_self';
 
@@ -49,6 +58,8 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final members = selectedFilter == null
         ? visibleMembers
         : visibleMembers.where((m) => m.movementActivity == selectedFilter).toList();
+
+    final unhandledAlert = sosState.unhandledCircleEmergency;
 
     return Stack(
       children: [
@@ -67,6 +78,36 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
               userAgentPackageName: 'com.familyguard.app',
             ),
+
+            // Saved Places Geofence Radius Circles Layer
+            if (savedPlaces.isNotEmpty)
+              CircleLayer(
+                circles: [
+                  for (final place in savedPlaces)
+                    CircleMarker(
+                      point: LatLng(place.latitude, place.longitude),
+                      radius: place.radius,
+                      useRadiusInMeter: true,
+                      color: place.color.withValues(alpha: 0.16),
+                      borderColor: place.color,
+                      borderStrokeWidth: 2.0,
+                    ),
+                ],
+              ),
+
+            // Saved Places Pin Markers Layer
+            if (savedPlaces.isNotEmpty)
+              MarkerLayer(
+                markers: [
+                  for (final place in savedPlaces)
+                    Marker(
+                      point: LatLng(place.latitude, place.longitude),
+                      width: 90,
+                      height: 55,
+                      child: _buildPlaceMapMarker(place),
+                    ),
+                ],
+              ),
 
             // Live Custom Pins for Circle Members
             MarkerLayer(
@@ -89,10 +130,15 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
         // ── Top Bar: Activity Filter Chips ────────────────────────────
         Positioned(
-          top: isParent ? 16 : 64,
+          top: 0,
           left: 12,
           right: 12,
-          child: _buildActivityFilterHeader(visibleMembers, selectedFilter),
+          child: SafeArea(
+            child: Padding(
+              padding: EdgeInsets.only(top: isParent ? 8 : 12),
+              child: _buildActivityFilterHeader(visibleMembers, selectedFilter),
+            ),
+          ),
         ),
 
         // ── Child Top Notification Banner ─────────────────────────────
@@ -230,11 +276,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           ),
 
-        // ── SOS Overlay ─────────────────────────────────────────────
-        if (_showSOS)
+        // ── SOS Overlay (Sender Trigger View) ────────────────────────
+        if (_showSOS || sosState.isSelfSosActive)
           SOSOverlay(
             onCancel: () => setState(() => _showSOS = false),
-            onActivated: () {},
+          ),
+
+        // ── SOS Receiver Dialog (Incoming Circle Emergency) ───────────
+        if (unhandledAlert != null && !_showSOS && !sosState.isSelfSosActive)
+          SOSReceiverDialog(
+            alert: unhandledAlert,
           ),
       ],
     );
@@ -344,6 +395,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final activity = member.movementActivity;
     final batColor = BatteryHelper.getColor(member.batteryLevel);
     final batIcon = BatteryHelper.getIcon(member.batteryLevel, isCharging: member.isCharging);
+    final isSos = member.isSosActive;
 
     return GestureDetector(
       onTap: () {
@@ -356,7 +408,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Avatar with Floating Movement Badge
+          // Avatar with Floating Movement Badge or SOS Pulse Ring
           Stack(
             clipBehavior: Clip.none,
             children: [
@@ -365,12 +417,12 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   shape: BoxShape.circle,
-                  border: Border.all(color: member.pinColor, width: 3),
+                  border: Border.all(color: member.pinColor, width: isSos ? 4 : 3),
                   boxShadow: [
                     BoxShadow(
-                      color: member.pinColor.withValues(alpha: 0.35),
-                      blurRadius: isSelected ? 14 : 6,
-                      spreadRadius: isSelected ? 3 : 1,
+                      color: member.pinColor.withValues(alpha: isSos ? 0.6 : 0.35),
+                      blurRadius: isSos ? 20 : (isSelected ? 14 : 6),
+                      spreadRadius: isSos ? 6 : (isSelected ? 3 : 1),
                     ),
                   ],
                 ),
@@ -381,27 +433,26 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 ),
               ),
 
-              // Floating Movement Indicator Badge (🛑 / 🚶 / 🚗)
+              // Floating SOS Badge or Movement Indicator Badge
               Positioned(
                 right: -4,
                 top: -4,
                 child: Container(
                   padding: const EdgeInsets.all(3),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: isSos ? AppColors.sosRed : Colors.white,
                     shape: BoxShape.circle,
-                    border: Border.all(color: activity.color, width: 1.5),
+                    border: Border.all(color: isSos ? Colors.white : activity.color, width: 1.5),
                     boxShadow: [
                       BoxShadow(
-                        color: activity.color.withValues(alpha: 0.3),
+                        color: (isSos ? AppColors.sosRed : activity.color).withValues(alpha: 0.3),
                         blurRadius: 4,
                       ),
                     ],
                   ),
-                  child: Text(
-                    activity.emoji,
-                    style: const TextStyle(fontSize: 10),
-                  ),
+                  child: isSos
+                      ? const Icon(Icons.emergency_rounded, size: 10, color: Colors.white)
+                      : Text(activity.emoji, style: const TextStyle(fontSize: 10)),
                 ),
               ),
             ],
@@ -413,9 +464,9 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: isSos ? AppColors.sosRed : Colors.white,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: isSelected ? member.pinColor : Colors.grey.shade200, width: isSelected ? 1.5 : 1.0),
+              border: Border.all(color: isSos ? Colors.white : (isSelected ? member.pinColor : Colors.grey.shade200), width: isSelected ? 1.5 : 1.0),
               boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6, offset: Offset(0, 2))],
             ),
             child: Row(
@@ -423,10 +474,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               children: [
                 Flexible(
                   child: Text(
-                    member.name,
+                    isSos ? '🚨 ${member.name}' : member.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
+                    style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w900,
+                      color: isSos ? Colors.white : AppColors.textPrimary,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 3),
@@ -434,20 +489,20 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                   decoration: BoxDecoration(
-                    color: batColor.withValues(alpha: 0.12),
+                    color: isSos ? Colors.white.withValues(alpha: 0.2) : batColor.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(6),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(batIcon, size: 10, color: batColor),
+                      Icon(batIcon, size: 10, color: isSos ? Colors.white : batColor),
                       const SizedBox(width: 2),
                       Text(
                         '${member.batteryLevel}%',
                         style: TextStyle(
                           fontSize: 8,
                           fontWeight: FontWeight.w900,
-                          color: batColor,
+                          color: isSos ? Colors.white : batColor,
                         ),
                       ),
                     ],
@@ -466,6 +521,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final activity = member.movementActivity;
     final batColor = BatteryHelper.getColor(member.batteryLevel);
     final batIcon = BatteryHelper.getIcon(member.batteryLevel, isCharging: member.isCharging);
+    final isSos = member.isSosActive;
 
     String speedText = '';
     if (activity == MovementActivity.walking) {
@@ -487,11 +543,11 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         width: 175,
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isSelected ? AppColors.primaryLight : AppColors.bg,
+          color: isSos ? AppColors.sosRedLight : (isSelected ? AppColors.primaryLight : AppColors.bg),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
-            color: isSelected ? AppColors.primary : AppColors.border,
-            width: isSelected ? 2 : 1,
+            color: isSos ? AppColors.sosRed : (isSelected ? AppColors.primary : AppColors.border),
+            width: isSos || isSelected ? 2 : 1,
           ),
         ),
         child: Column(
@@ -529,10 +585,14 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
             // Member Name
             Text(
-              member.name,
+              isSos ? '🚨 ${member.name}' : member.name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                color: isSos ? AppColors.sosRed : AppColors.textPrimary,
+              ),
             ),
 
             const SizedBox(height: 4),
@@ -541,24 +601,24 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: activity.bgColor,
+                color: isSos ? AppColors.sosRed.withValues(alpha: 0.15) : activity.bgColor,
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: activity.color.withValues(alpha: 0.3)),
+                border: Border.all(color: isSos ? AppColors.sosRed : activity.color.withValues(alpha: 0.3)),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(activity.emoji, style: const TextStyle(fontSize: 12)),
+                  Text(isSos ? '🚨' : activity.emoji, style: const TextStyle(fontSize: 12)),
                   const SizedBox(width: 4),
                   Flexible(
                     child: Text(
-                      '${activity.label}$speedText',
+                      isSos ? 'SOS EMERGENCY' : '${activity.label}$speedText',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w800,
-                        color: activity.color,
+                        color: isSos ? AppColors.sosRed : activity.color,
                       ),
                     ),
                   ),
@@ -580,4 +640,49 @@ class _MapScreenState extends ConsumerState<MapScreen> {
       ),
     );
   }
+
+  Widget _buildPlaceMapMarker(Place place) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            shape: BoxShape.circle,
+            border: Border.all(color: place.color, width: 2.5),
+            boxShadow: [
+              BoxShadow(
+                color: place.color.withValues(alpha: 0.3),
+                blurRadius: 6,
+                spreadRadius: 1,
+              ),
+            ],
+          ),
+          child: Icon(place.iconData, size: 16, color: place.color),
+        ),
+        Container(
+          margin: const EdgeInsets.only(top: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: place.color.withValues(alpha: 0.5)),
+            boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 1))],
+          ),
+          child: Text(
+            place.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 9,
+              fontWeight: FontWeight.w900,
+              color: AppColors.textPrimary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
+

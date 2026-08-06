@@ -20,6 +20,7 @@ class Member extends Equatable {
   final MovementActivity movementActivity;
   final Color pinColor;
   final bool isStale;
+  final bool isSosActive;
 
   const Member({
     required this.id,
@@ -36,6 +37,7 @@ class Member extends Equatable {
     required this.movementActivity,
     this.pinColor = AppColors.primary,
     this.isStale = false,
+    this.isSosActive = false,
   });
 
   Member copyWith({
@@ -53,6 +55,7 @@ class Member extends Equatable {
     MovementActivity? movementActivity,
     Color? pinColor,
     bool? isStale,
+    bool? isSosActive,
   }) {
     return Member(
       id: id ?? this.id,
@@ -69,6 +72,7 @@ class Member extends Equatable {
       movementActivity: movementActivity ?? this.movementActivity,
       pinColor: pinColor ?? this.pinColor,
       isStale: isStale ?? this.isStale,
+      isSosActive: isSosActive ?? this.isSosActive,
     );
   }
 
@@ -88,5 +92,6 @@ class Member extends Equatable {
         movementActivity,
         pinColor,
         isStale,
+        isSosActive,
       ];
 }

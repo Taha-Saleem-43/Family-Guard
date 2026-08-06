@@ -34,10 +34,11 @@ Features real-time location tracking, a continuous background location engine, g
 - **Categorized Feed**: Filterable feed tabs (All, Places, SOS Emergencies, Battery warnings).
 - **Read / Unread Tracking**: Status cards showing detailed alert timestamps, member details, and locations.
 
-### 🚨 6. Emergency SOS Panic System (`SOSOverlay`)
+### 🚨 6. Emergency SOS Panic System (`SOSOverlay` & `SOSReceiverDialog`)
 - **Full-Screen Emergency Overlay**: High-visibility red panic screen with a 3-second animated countdown to prevent accidental triggers.
-- **Siren Simulation**: Triggers audible panic tone and emergency vibration feedback.
-- **Circle Panic Dispatch**: Dispatches immediate high-priority emergency notifications with live GPS coordinates to all circle members.
+- **Max-Volume Audio Siren & Haptics**: Overrides device volume to 100%, plays continuous high-priority emergency siren loop, and triggers heavy haptic vibration pattern on receiver devices.
+- **Real-Time Circle Emergency Sync**: Dispatches instant emergency notifications with live GPS coordinates, reverse-geocoded address, and active duration ticker (`Active Duration • MM:SS`) across all circle members.
+- **Streamlined Emergency Action Dialog (`SOSReceiverDialog`)**: High-urgency modal popup featuring 1-tap turn-by-turn navigation ("Get Directions") and full-width instant "Dismiss Alarm".
 - **Persistent Floating SOS Trigger**: Global SOS trigger button accessible on top of main app shell screens (`MainShellScreen`).
 
 ### 🔑 7. Runtime Permission Gate & OEM Setup (`PermissionGateScreen`)

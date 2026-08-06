@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
+import '../models/location_history_point.dart';
 import '../models/member.dart';
 import '../models/movement_activity.dart';
 import '../theme/app_colors.dart';
@@ -69,6 +70,9 @@ class FirestoreLocationService {
 
     try {
       if (_firestore != null) {
+        final expireAt = now.add(const Duration(days: 30));
+
+        // Update active status in users collection
         await _firestore.collection('users').doc(uid).set({
           'latitude': latitude,
           'longitude': longitude,
@@ -77,8 +81,26 @@ class FirestoreLocationService {
           'batteryLevel': batteryLevel,
           'isCharging': isCharging,
           'lastSeen': now.toIso8601String(),
-          'expireAt': now.add(const Duration(days: 30)).toIso8601String(),
+          'expireAt': expireAt.toIso8601String(),
         }, SetOptions(merge: true));
+
+        // Record history point in locationHistory/{uid}/points
+        final historyPoint = LocationHistoryPoint(
+          id: now.millisecondsSinceEpoch.toString(),
+          latitude: latitude,
+          longitude: longitude,
+          speedMph: speedMph,
+          movementActivity: activity,
+          timestamp: now,
+          expireAt: expireAt,
+        );
+
+        await _firestore
+            .collection('locationHistory')
+            .doc(uid)
+            .collection('points')
+            .doc(historyPoint.id)
+            .set(historyPoint.toMap());
 
         // Auto purge expired documents directly from client-side
         await purgeExpiredDocuments(uid: uid);
@@ -92,6 +114,37 @@ class FirestoreLocationService {
       _lastUploadedCharging = isCharging;
     } catch (e) {
       debugPrint('[FirestoreLocationService] Error updating location: $e');
+    }
+  }
+
+  /// Fetches location history points for a user within a specified date range
+  Future<List<LocationHistoryPoint>> fetchLocationHistory({
+    required String uid,
+    required DateTime startDate,
+    required DateTime endDate,
+  }) async {
+    final firestore = _firestore;
+    if (firestore == null || uid.isEmpty) return [];
+
+    try {
+      final startIso = startDate.toIso8601String();
+      final endIso = endDate.toIso8601String();
+
+      final snapshot = await firestore
+          .collection('locationHistory')
+          .doc(uid)
+          .collection('points')
+          .where('timestamp', isGreaterThanOrEqualTo: startIso)
+          .where('timestamp', isLessThanOrEqualTo: endIso)
+          .orderBy('timestamp', descending: true)
+          .get();
+
+      return snapshot.docs
+          .map((doc) => LocationHistoryPoint.fromMap(doc.id, doc.data()))
+          .toList();
+    } catch (e) {
+      debugPrint('[FirestoreLocationService] Error fetching location history: $e');
+      return [];
     }
   }
 
@@ -112,12 +165,12 @@ class FirestoreLocationService {
       int deletedCount = 0;
       final batch = firestore.batch();
 
-      // 1. Query locationHistory points where lastSeen <= cutoffIso
+      // 1. Query locationHistory points where lastSeen/timestamp <= cutoffIso
       final historyLastSeenQuery = await firestore
           .collection('locationHistory')
           .doc(uid)
           .collection('points')
-          .where('lastSeen', isLessThanOrEqualTo: cutoffIso)
+          .where('timestamp', isLessThanOrEqualTo: cutoffIso)
           .get();
 
       for (final doc in historyLastSeenQuery.docs) {
@@ -151,6 +204,39 @@ class FirestoreLocationService {
           batch.delete(doc.reference);
           deletedCount++;
         }
+      }
+
+      // 4. Query sos_alerts collection where timestamp <= cutoffIso
+      final sosAlertsQuery = await firestore
+          .collection('sos_alerts')
+          .where('timestamp', isLessThanOrEqualTo: cutoffIso)
+          .get();
+
+      for (final doc in sosAlertsQuery.docs) {
+        batch.delete(doc.reference);
+        deletedCount++;
+      }
+
+      // 5. Query sosEvents collection where timestamp <= cutoffIso
+      final sosEventsQuery = await firestore
+          .collection('sosEvents')
+          .where('timestamp', isLessThanOrEqualTo: cutoffIso)
+          .get();
+
+      for (final doc in sosEventsQuery.docs) {
+        batch.delete(doc.reference);
+        deletedCount++;
+      }
+
+      // 6. Query placeEvents collection where timestamp <= cutoffIso
+      final placeEventsQuery = await firestore
+          .collection('placeEvents')
+          .where('timestamp', isLessThanOrEqualTo: cutoffIso)
+          .get();
+
+      for (final doc in placeEventsQuery.docs) {
+        batch.delete(doc.reference);
+        deletedCount++;
       }
 
       if (deletedCount > 0) {
@@ -195,7 +281,12 @@ class FirestoreLocationService {
           } catch (_) {}
         }
 
+        final isSosActive = data['isSosActive'] as bool? ?? false;
         final isStale = DateTime.now().difference(lastSeen).inMinutes > 15;
+
+        final pinColor = isSosActive
+            ? AppColors.sosRed
+            : (isSelf ? AppColors.primary : (role == UserRole.parent ? AppColors.primary : AppColors.teal));
 
         return Member(
           id: doc.id,
@@ -210,8 +301,9 @@ class FirestoreLocationService {
           isCharging: isCharging,
           speedMph: speed,
           movementActivity: activity,
-          pinColor: isSelf ? AppColors.primary : (role == UserRole.parent ? AppColors.primary : AppColors.teal),
+          pinColor: pinColor,
           isStale: isStale,
+          isSosActive: isSosActive,
         );
       }).toList();
     });

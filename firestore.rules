@@ -68,7 +68,11 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
-    // SOS Emergency Events
+    // SOS Emergency Events & Alerts
+    match /sos_alerts/{alertId} {
+      allow read, write: if isAuthenticated();
+    }
+
     match /sosEvents/{eventId} {
       allow read, write: if isAuthenticated();
     }
