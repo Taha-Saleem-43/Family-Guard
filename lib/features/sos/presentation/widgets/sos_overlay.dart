@@ -25,6 +25,8 @@ class _SOSOverlayState extends ConsumerState<SOSOverlay> {
   @override
   void initState() {
     super.initState();
+    _isActive = ref.read(sosProvider).isSelfSosActive;
+    if (_isActive) return;
     _playCountdownTick();
     _startCountdown();
   }

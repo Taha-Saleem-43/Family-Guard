@@ -39,4 +39,4 @@ Local Flutter suite: 55 tests passed. Dart analysis: no issues. Firestore securi
 
 These checks do not establish physical-device behavior, Play approval, deployed backend compatibility, or measured battery savings. GitHub Actions only runs remotely after the branch is pushed.
 
-The SOS state correction additionally passed the full 56-test Flutter suite before its failure-path regression was added; all 10 SOS tests then passed, including the added failure-path test. Flutter analysis reported no issues. The initial remote foundation Flutter job passed; its backend job exposed a Node 22 isolation-flag incompatibility, now corrected by a portable launcher and awaiting remote revalidation.
+The SOS state correction passed the final full 57-test Flutter suite, including failed-send/failed-resolution and nullable-field regressions. Flutter analysis reported no issues. Foundation GitHub Actions passed both Flutter and Firebase jobs after a portable launcher corrected a Node 22 test-isolation flag incompatibility. SOS remote checks run separately on its stacked draft pull request.
