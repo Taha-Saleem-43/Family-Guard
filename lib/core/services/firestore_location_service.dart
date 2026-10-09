@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import '../models/location_history_point.dart';
+import '../models/location_history_page.dart';
 import '../models/member.dart';
 import '../models/movement_activity.dart';
 import 'member_profile_decoder.dart';
@@ -245,9 +246,31 @@ class FirestoreLocationService {
     String? circleId,
     required DateTime startDate,
     required DateTime endDate,
+  }) async => (await fetchHistoryPage(
+    uid: uid,
+    circleId: circleId,
+    startDate: startDate,
+    endDate: endDate,
+    pageSize: 1000,
+  )).points;
+
+  Future<LocationHistoryPage> fetchHistoryPage({
+    required String uid,
+    String? circleId,
+    required DateTime startDate,
+    required DateTime endDate,
+    HistoryCursor? cursor,
+    int pageSize = 200,
   }) async {
+    if (pageSize < 1 || pageSize > 1000) {
+      throw ArgumentError.value(
+        pageSize,
+        'pageSize',
+        'Must be between 1 and 1000',
+      );
+    }
     final firestore = _firestore;
-    if (firestore == null || uid.isEmpty) return [];
+    if (firestore == null || uid.isEmpty) return const LocationHistoryPage();
 
     try {
       final startIso = Timestamp.fromDate(startDate.toUtc());
@@ -258,19 +281,32 @@ class FirestoreLocationService {
           .doc(uid)
           .collection('points');
       if (circleId != null) {
-        if (circleId.isEmpty) return [];
+        if (circleId.isEmpty) return const LocationHistoryPage();
         query = query.where('circleId', isEqualTo: circleId);
       }
-      final snapshot = await query
+      query = query
           .where('timestamp', isGreaterThanOrEqualTo: startIso)
           .where('timestamp', isLessThanOrEqualTo: endIso)
           .orderBy('timestamp', descending: true)
-          .limit(1000)
-          .get();
-
-      return snapshot.docs
+          .orderBy(FieldPath.documentId, descending: true);
+      if (cursor != null) {
+        query = query.startAfter([
+          Timestamp.fromDate(cursor.timestamp.toUtc()),
+          cursor.documentId,
+        ]);
+      }
+      final snapshot = await query.limit(pageSize + 1).get();
+      final included = snapshot.docs.take(pageSize).toList();
+      final points = included
           .map((doc) => LocationHistoryPoint.fromMap(doc.id, doc.data()))
           .toList();
+
+      return LocationHistoryPage(
+        points: points,
+        nextCursor: snapshot.docs.length > pageSize && points.isNotEmpty
+            ? HistoryCursor(points.last.timestamp, included.last.id)
+            : null,
+      );
     } catch (e) {
       debugPrint(
         '[FirestoreLocationService] Error fetching location history: $e',

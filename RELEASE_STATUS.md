@@ -13,6 +13,7 @@ Implemented foundations:
 - History query failures propagate to a retryable error panel; loading and empty data have separate states. Refresh waits for the query and works with short or empty lists. History member selection resets across account/circle changes, and children query only their own history. History map controllers are disposed with their screen.
 - Location-bearing profiles are readable only by their owner or a parent in the same circle. Child subscriptions read one profile; parent subscriptions retain the family roster. Role changes restart subscriptions and stale callbacks are rejected.
 - History points carry the recorded circle. Parent history queries filter by that circle, and rules deny former-circle or untagged history to other users. Owners retain access to their own legacy history. Uploads resolve membership from the server once per account/process and re-resolve after permission rejection.
+- History loads 200 points per cursor page with an explicit load-older control, preserves loaded data on older-page failure, and retries the same cursor. Fixed query windows and document-ID tie-breakers prevent boundary shifts and equal-timestamp gaps. Account changes reject late page results and clear route/timeline previews while loading.
 - Regression tests and GitHub Actions for app, backend and rules verification.
 - Android targets API 36 with explicit build tools and SDK download controls. Release builds no longer use debug signing; a validation task requires an owner-approved application ID and local upload-keystore configuration. Native debug compilation and release-guard checks were added to branch CI; branch CI has passed native debug compilation and release-guard verification.
 - SOS creation/resolution use authenticated, App Check protected backend transactions. Sender identity and names come from the server profile. Concurrent sends create one active alert per user; persistent request IDs make ambiguous timeout retries safe across client recreation. Resolved request IDs cannot reopen an old alert, and resolving an old alert cannot clear a newer one. Client writes to SOS records and profile flags are denied.
@@ -32,7 +33,7 @@ History readers now query Firestore timestamps and parents filter by the recorde
 - Push token lifecycle, backend SOS push fan-out, background notification handling, durable offline SOS state restoration and delivery acknowledgement.
 - Native geofence transition processing and alerts; do not advertise it as working until tested end to end.
 - Durable offline upload storage, retry/backoff and cross-isolate/device ordering reconciliation, accurate connectivity/freshness reporting and adaptive battery tuning. Current serialization is process-local and does not establish durable recovery by itself.
-- History cursor pagination and migration UX. Current query is bounded to 1,000 points; a full pagination interface is still needed.
+- Legacy history migration UX and performance benchmarks for very large loaded routes.
 - Account deletion and membership removal backend flows.
 - Android target API/release identity/signing checks, supported-device background/boot/permission-revocation tests and battery benchmarks.
 - Privacy policy, prominent background-location disclosure, data-safety declaration, store assets and closed testing.
@@ -41,7 +42,9 @@ New personal Play accounts currently require at least 12 opted-in testers contin
 
 ## Verification
 
-Android native validation: branch CI now checks every ARM64 library with Android NDK llvm-objdump and verifies 16 KB APK ZIP alignment with zipalign. This new check awaits its first CI run. No device or configured emulator is currently available locally; signed-AAB and physical/16 KB device verification remain open.
+History pagination: the full 90-test Flutter suite passed, then all 9 targeted history tests passed including the new load-older widget/retry test. All 13 rules emulator tests passed, including identical-timestamp cursor ordering. Final app/test analysis and final widget-test analysis are clean. Older-page failures retain existing data, repeated load-more taps are coalesced, and late results cannot restore data after an account switch.
+
+Android native validation: branch CI now checks every ARM64 library with Android NDK llvm-objdump and verifies 16 KB APK ZIP alignment with zipalign. All three remote CI jobs passed, including native ELF and APK alignment verification. No device or configured emulator is currently available locally; signed-AAB and physical/16 KB device verification remain open.
 
 Upload coalescing: all 87 Flutter tests pass and app/test analysis is clean. One write runs at a time with only the newest pending payload retained; a blocked-upload test collapses 500 callbacks to the newest waiting fix and verifies failure recovery. Native capture times are preserved in lastSeen/history/expiry, older out-of-order fixes are ignored, and history uses unique document IDs. Coalescing is process-local and intentionally supersedes intermediate waiting fixes; it is not durable offline recovery.
 

@@ -40,6 +40,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final timelineItems = ref.watch(historyTimelineProvider);
     final polylinePoints = ref.watch(historyRoutePolylineProvider);
     final history = ref.watch(rawLocationHistoryProvider);
+    final pager = ref.read(rawLocationHistoryProvider.notifier);
     final canSelectMembers = appState.role == UserRole.parent && members.length > 1;
 
     final selectedMember = members.where(
@@ -232,7 +233,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             const SizedBox(width: 6),
                             Text(
                               history.isLoading ? 'Loading history…' : history.hasError
-                                  ? 'History unavailable' : '${timelineItems.length} Event(s)',
+                                  ? 'History unavailable' : '${timelineItems.length} loaded event(s)',
                               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                             ),
                           ],
@@ -304,9 +305,20 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   : ListView.separated(
                       physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      itemCount: timelineItems.length,
+                      itemCount: timelineItems.length + (pager.hasMore || pager.moreError != null ? 1 : 0),
                       separatorBuilder: (context, index) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
+                        if (index == timelineItems.length) {
+                          return Padding(padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: Column(children: [
+                              if (pager.moreError != null) Text(pager.moreError!, textAlign: TextAlign.center),
+                              if (pager.hasMore) OutlinedButton(
+                                onPressed: pager.loadingMore ? null : pager.loadMore,
+                                child: Text(pager.loadingMore ? 'Loading older history…' : 'Load older history'),
+                              ),
+                            ]),
+                          );
+                        }
                         final item = timelineItems[index];
 
                         return Card(

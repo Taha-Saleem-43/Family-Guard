@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:family_guard/core/models/location_history_point.dart';
+import 'package:family_guard/core/models/location_history_page.dart';
 import 'package:family_guard/core/providers/app_state_provider.dart';
 import 'package:family_guard/core/services/firestore_location_service.dart';
 import 'package:family_guard/features/history/providers/history_provider.dart';
@@ -14,6 +15,22 @@ class ControlledHistoryService extends FirestoreLocationService {
   bool failFirst = false;
   String? queriedUid;
   String? queriedCircleId;
+  @override
+  Future<LocationHistoryPage> fetchHistoryPage({
+    required String uid,
+    String? circleId,
+    required DateTime startDate,
+    required DateTime endDate,
+    HistoryCursor? cursor,
+    int pageSize = 200,
+  }) async => LocationHistoryPage(
+    points: await fetchLocationHistory(
+      uid: uid,
+      circleId: circleId,
+      startDate: startDate,
+      endDate: endDate,
+    ),
+  );
   @override
   Future<List<LocationHistoryPoint>> fetchLocationHistory({
     required String uid,

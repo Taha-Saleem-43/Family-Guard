@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../core/models/history_timeline_item.dart';
 import '../../../core/models/location_history_point.dart';
+import '../../../core/models/location_history_page.dart';
 import '../../../core/models/movement_activity.dart';
 import '../../../core/models/place.dart';
 import '../../../core/providers/app_state_provider.dart';
@@ -31,56 +32,125 @@ final historyCronStatusProvider = FutureProvider<DateTime?>((ref) async {
   return await HistoryCronService.instance.getLastPurgeDate();
 });
 
-/// Raw location history points provider
-final rawLocationHistoryProvider = FutureProvider<List<LocationHistoryPoint>>((
-  ref,
-) async {
-  final uid = ref.watch(appStateProvider.select((state) => state.userId));
-  final circleId = ref.watch(
-    appStateProvider.select((state) => state.circleId),
-  );
-  final role = ref.watch(appStateProvider.select((state) => state.role));
-  final selection = ref.watch(selectedHistoryMemberIdProvider);
-  final selectedMemberId = role == UserRole.parent ? selection ?? uid : uid;
-  final timeframeIndex = ref.watch(selectedHistoryTimeframeProvider);
-  final service = ref.watch(firestoreLocationServiceProvider);
+/// Cursor pages retain a fixed time window and reject stale session results.
+final rawLocationHistoryProvider =
+    AsyncNotifierProvider<HistoryPager, List<LocationHistoryPoint>>(
+      HistoryPager.new,
+    );
 
-  if (selectedMemberId.isEmpty) return [];
-
-  final now = DateTime.now();
-  DateTime startDate;
-
-  switch (timeframeIndex) {
-    case 0: // Today
-      startDate = DateTime(now.year, now.month, now.day);
-      break;
-    case 1: // 7 Days
-      startDate = now.subtract(const Duration(days: 7));
-      break;
-    case 2: // 30 Days
-      startDate = now.subtract(const Duration(days: 30));
-      break;
-    default:
-      startDate = DateTime(now.year, now.month, now.day);
-  }
-
-  final remotePoints = await service.fetchLocationHistory(
-    uid: selectedMemberId,
-    circleId: selectedMemberId == uid ? null : circleId,
-    startDate: startDate,
-    endDate: now,
-  );
-
-  if (remotePoints.isNotEmpty) {
-    return remotePoints;
-  }
-
-  return [];
+typedef _HistoryWindow = ({
+  String uid,
+  String? circleId,
+  DateTime start,
+  DateTime end,
+  FirestoreLocationService service,
 });
+
+class HistoryPager extends AsyncNotifier<List<LocationHistoryPoint>> {
+  _HistoryWindow? _window;
+  HistoryCursor? _cursor;
+  int _generation = 0;
+  bool _disposed = false;
+  bool hasMore = false;
+  bool loadingMore = false;
+  String? moreError;
+
+  @override
+  Future<List<LocationHistoryPoint>> build() async {
+    final generation = ++_generation;
+    _disposed = false;
+    ref.onDispose(() {
+      _disposed = true;
+      ++_generation;
+    });
+    _cursor = null;
+    _window = null;
+    hasMore = false;
+    loadingMore = false;
+    moreError = null;
+    final uid = ref.watch(appStateProvider.select((state) => state.userId));
+    final circleId = ref.watch(
+      appStateProvider.select((state) => state.circleId),
+    );
+    final role = ref.watch(appStateProvider.select((state) => state.role));
+    final selection = ref.watch(selectedHistoryMemberIdProvider);
+    final selectedMemberId = role == UserRole.parent ? selection ?? uid : uid;
+    final timeframe = ref.watch(selectedHistoryTimeframeProvider);
+    final service = ref.watch(firestoreLocationServiceProvider);
+    if (selectedMemberId.isEmpty) return [];
+    final now = DateTime.now();
+    final start = timeframe == 1
+        ? now.subtract(const Duration(days: 7))
+        : timeframe == 2
+        ? now.subtract(const Duration(days: 30))
+        : DateTime(now.year, now.month, now.day);
+    final window = (
+      uid: selectedMemberId,
+      circleId: selectedMemberId == uid ? null : circleId,
+      start: start,
+      end: now,
+      service: service,
+    );
+    _window = window;
+    final page = await service.fetchHistoryPage(
+      uid: window.uid,
+      circleId: window.circleId,
+      startDate: window.start,
+      endDate: window.end,
+    );
+    if (_disposed || generation != _generation) return [];
+    _cursor = page.nextCursor;
+    hasMore = page.hasMore;
+    return page.points;
+  }
+
+  Future<void> loadMore() async {
+    final window = _window;
+    final cursor = _cursor;
+    if (_disposed ||
+        window == null ||
+        cursor == null ||
+        !hasMore ||
+        loadingMore ||
+        state.isLoading ||
+        state.hasError) {
+      return;
+    }
+    final generation = _generation;
+    final current = state.requireValue;
+    loadingMore = true;
+    moreError = null;
+    state = AsyncData(List.of(current));
+    try {
+      final page = await window.service.fetchHistoryPage(
+        uid: window.uid,
+        circleId: window.circleId,
+        startDate: window.start,
+        endDate: window.end,
+        cursor: cursor,
+      );
+      if (_disposed || generation != _generation) return;
+      _cursor = page.nextCursor;
+      hasMore = page.hasMore;
+      loadingMore = false;
+      final byId = {for (final point in current) point.id: point};
+      for (final point in page.points) {
+        byId[point.id] = point;
+      }
+      state = AsyncData(byId.values.toList());
+    } catch (_) {
+      if (_disposed || generation != _generation) return;
+      loadingMore = false;
+      moreError = 'Could not load older history. Try again.';
+      state = AsyncData(List.of(current));
+    }
+  }
+}
 
 /// Computes aggregated timeline items (Stays & Trips) from history points, matching saved places
 final historyTimelineProvider = Provider<List<HistoryTimelineItem>>((ref) {
   final asyncPoints = ref.watch(rawLocationHistoryProvider);
+  if (asyncPoints.isLoading || asyncPoints.hasError) return [];
   final placesAsync = ref.watch(circlePlacesStreamProvider);
   final places = placesAsync.value ?? <Place>[];
 
@@ -94,6 +164,7 @@ final historyTimelineProvider = Provider<List<HistoryTimelineItem>>((ref) {
 /// Route polyline points for the map header
 final historyRoutePolylineProvider = Provider<List<LatLng>>((ref) {
   final asyncPoints = ref.watch(rawLocationHistoryProvider);
+  if (asyncPoints.isLoading || asyncPoints.hasError) return [];
 
   return asyncPoints.when(
     data: (points) =>

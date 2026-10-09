@@ -1,7 +1,8 @@
 const { before, after, test } = require('node:test');
+const assert = require('node:assert/strict');
 const { readFileSync } = require('node:fs');
 const { initializeTestEnvironment, assertFails, assertSucceeds } = require('@firebase/rules-unit-testing');
-const { doc, setDoc, getDoc, updateDoc, collection, query, where, getDocs, Timestamp } = require('firebase/firestore');
+const { doc, setDoc, getDoc, updateDoc, collection, query, where, getDocs, Timestamp, orderBy, documentId, startAfter, limit } = require('firebase/firestore');
 let env;
 before(async () => {
   env = await initializeTestEnvironment({ projectId: 'demo-family-guard',
@@ -105,4 +106,20 @@ test('parents cannot read a member history recorded in another circle or without
   await assertFails(getDocs(collection(dbFor('parentA'), 'locationHistory/childA/points')));
   const point = {circleId: 'former', latitude: 1, longitude: 2, timestamp: Timestamp.now(), expireAt: Timestamp.now()};
   await assertFails(setDoc(doc(dbFor('childA'), 'locationHistory/childA/points/forged-circle'), point));
+});
+
+test('parent history cursors preserve every point when timestamps are identical', async () => {
+  const timestamp = Timestamp.fromDate(new Date('2026-10-09T00:00:00Z'));
+  await env.withSecurityRulesDisabled(async (context) => {
+    for (const id of ['a', 'b', 'c']) await setDoc(doc(context.firestore(), `locationHistory/siblingA/points/${id}`), {
+      circleId: 'a', latitude: 1, longitude: 2, timestamp,
+    });
+  });
+  const base = query(collection(dbFor('parentA'), 'locationHistory/siblingA/points'),
+    where('circleId', '==', 'a'), where('timestamp', '>=', timestamp), where('timestamp', '<=', timestamp),
+    orderBy('timestamp', 'desc'), orderBy(documentId(), 'desc'));
+  const first = await assertSucceeds(getDocs(query(base, limit(2))));
+  assert.deepEqual(first.docs.map((point) => point.id), ['c', 'b']);
+  const second = await assertSucceeds(getDocs(query(base, startAfter(timestamp, 'b'), limit(2))));
+  assert.deepEqual(second.docs.map((point) => point.id), ['a']);
 });
