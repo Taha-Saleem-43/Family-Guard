@@ -34,6 +34,12 @@ jobs:
           log-accepted-android-sdk-licenses: 'false'
       - run: flutter pub get --enforce-lockfile
       - run: flutter build apk --debug --no-pub --target-platform android-arm64
+      - name: Verify 16 KB native library and APK alignment
+        run: |
+          bash scripts/check-native-alignment.sh \
+            build/app/outputs/flutter-apk/app-debug.apk \
+            "$ANDROID_SDK_ROOT/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objdump" \
+            "$ANDROID_SDK_ROOT/build-tools/36.1.0/zipalign"
       - name: Reject unconfigured production release
         working-directory: android
         run: |

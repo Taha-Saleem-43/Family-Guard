@@ -41,6 +41,8 @@ New personal Play accounts currently require at least 12 opted-in testers contin
 
 ## Verification
 
+Android native validation: branch CI now checks every ARM64 library with Android NDK llvm-objdump and verifies 16 KB APK ZIP alignment with zipalign. This new check awaits its first CI run. No device or configured emulator is currently available locally; signed-AAB and physical/16 KB device verification remain open.
+
 Upload coalescing: all 87 Flutter tests pass and app/test analysis is clean. One write runs at a time with only the newest pending payload retained; a blocked-upload test collapses 500 callbacks to the newest waiting fix and verifies failure recovery. Native capture times are preserved in lastSeen/history/expiry, older out-of-order fixes are ignored, and history uses unique document IDs. Coalescing is process-local and intentionally supersedes intermediate waiting fixes; it is not durable offline recovery.
 
 Location refresh efficiency: the existing full 83-test suite passed after the optimization, followed by all 4 decoder regressions including the newly added unchanged-state/partial-aging test. App/test analysis and final test analysis are clean. Freshness checks retain list/member identity and publish only when a stale status changes, avoiding recurring map rebuilds.

@@ -17,6 +17,8 @@ Plugins also compile against APIs 34 and 35 and AGP's default build tools 35.0.0
 
 The app targets Android 16/API 36. [Google's current target API requirement](https://developer.android.com/google/play/requirements/target-sdk) applies to new app submissions from August 31, 2026. Raising the target changes Android behavior and requires real-device verification, particularly permissions, edge-to-edge layout, foreground tracking and boot handling.
 
-Confirm Android's 16 KB page-size compatibility for every bundled native library, validate the actual AAB and its upload certificate, and test supported devices before distributing it. Neither Dart tests nor changing `targetSdk` proves native compatibility.
+CI runs `scripts/check-native-alignment.sh` against the newly built ARM64 debug APK. It uses the Android NDK's `llvm-objdump` to require every LOAD segment to have at least 16 KB alignment and uses build-tools `zipalign -c -P 16` to verify APK ZIP alignment. See [Android's native page-size verification guidance](https://developer.android.com/guide/practices/page-sizes) and [zipalign documentation](https://developer.android.com/tools/zipalign). These static checks do not establish behavior on a 16 KB device.
+
+Confirm Android's 16 KB page-size compatibility for every bundled release native library, validate the actual AAB and its upload certificate, and test supported devices before distributing it. Neither Dart tests nor changing `targetSdk` proves native compatibility.
 
 The account/package-ID/signing/Firebase configuration, backend deployment, privacy disclosures, account deletion and device testing remain release gates. No keystore or permanent release identity has been invented or generated as part of this change.
