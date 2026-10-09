@@ -194,7 +194,10 @@ class LocationService {
   Future<void> start({required String uid, required String circleId}) async {
     if (!_isReady || FirebaseAuth.instance.currentUser?.uid != uid) return;
     await _lifecycle.start(uid, circleId);
-    if (_lifecycle.activeScope != (uid: uid, circleId: circleId)) return;
+    if (_lifecycle.activeScope != (uid: uid, circleId: circleId)) {
+      _clearOrphanedRetry();
+      return;
+    }
     _retryTimer?.cancel();
     _retryTimerUid = uid;
     _retryTimer = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -209,7 +212,18 @@ class LocationService {
       _retryTimer?.cancel();
       _retryTimerUid = null;
     }
-    await _lifecycle.stop(uid);
+    try {
+      await _lifecycle.stop(uid);
+    } finally {
+      _clearOrphanedRetry();
+    }
+  }
+
+  void _clearOrphanedRetry() {
+    if (_retryTimerUid != _lifecycle.activeScope?.uid) {
+      _retryTimer?.cancel();
+      _retryTimerUid = null;
+    }
   }
 
   // ── Event subscriptions (thin wrappers) ───────────────────────────────────
