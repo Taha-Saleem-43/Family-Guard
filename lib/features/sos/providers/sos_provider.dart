@@ -138,8 +138,15 @@ class SOSNotifier extends StateNotifier<SOSState> {
             final savedDismissals = await dismissed;
             if (!mounted || generation != _sessionGeneration) return;
             state = state.copyWith(
-              handledAlertIds: {...savedDismissals, ...state.handledAlertIds},
+              handledAlertIds: PreferencesSOSDismissalStore.bounded(
+                {...savedDismissals, ...state.handledAlertIds},
+                activeIds: alerts
+                    .where((a) => a.isActive)
+                    .map((a) => a.id)
+                    .toSet(),
+              ),
             );
+            _soundedAlertIds.retainAll(alerts.map((a) => a.id));
             final currentUid = _ref.read(appStateProvider).userId;
             final selfAlerts =
                 alerts
@@ -405,7 +412,10 @@ class SOSNotifier extends StateNotifier<SOSState> {
   /// Receiver dismisses emergency notification view locally
   void dismissReceiverAlert(String alertId) {
     _stopReceiverSiren();
-    final updated = Set<String>.from(state.handledAlertIds)..add(alertId);
+    final updated = PreferencesSOSDismissalStore.bounded({
+      ...state.handledAlertIds,
+      alertId,
+    }, activeIds: state.activeCircleAlerts.map((a) => a.id).toSet());
     state = state.copyWith(handledAlertIds: updated);
     final session = _ref.read(appStateProvider);
     if (session.userId.isNotEmpty && session.circleId.isNotEmpty) {

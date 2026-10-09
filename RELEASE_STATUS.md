@@ -41,6 +41,8 @@ New personal Play accounts currently require at least 12 opted-in testers contin
 
 ## Verification
 
+SOS dismissal reliability: all 83 Flutter tests pass and app/test analysis is clean. Writes are ordered across provider recreation and pending snapshots are readable without waiting for disk. Failed writes do not poison later saves. Retained IDs are bounded to 100 with active emergencies prioritized; sounded IDs are pruned to the active stream. Regressions cover delayed writes, concurrent recreation, caller mutation and disk failure recovery.
+
 History access boundaries: analysis of app/test source is clean; all 80 Flutter tests and 12 rules emulator tests pass, including owner legacy access, denial of former-circle history, constrained parent queries and rejection of forged recorded circles.
 
 Live-member reliability: all 79 Flutter tests pass and analysis of all app/test source reports no issues. Legacy malformed member values cannot crash roster decoding; invalid/incomplete coordinates are omitted, missing battery is displayed as Unknown, and future-clock locations are stale. A local minute timer ages freshness without database polling. All 11 rules emulator tests pass; the native -1 unknown battery value is accepted so missing battery cannot reject a valid location update. Circle management, data access hardening and profile validation each passed all three remote CI jobs (Flutter, Firebase and Android).
