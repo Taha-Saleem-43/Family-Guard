@@ -2,9 +2,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class UserSessionService {
   static const String _activeUidKey = 'fg_active_user_uid';
-  static String _key(String uid, String suffix) => 'fg_user_session_${uid}_$suffix';
+  static String _key(String uid, String suffix) =>
+      'fg_user_session_${uid}_$suffix';
 
-  /// Save active session data including JWT token and user metadata
+  /// Cache display metadata only. Firebase Auth owns credential persistence.
   static Future<void> saveUserSession({
     required String uid,
     required String role,
@@ -37,10 +38,9 @@ class UserSessionService {
       if (parentCode != null && parentCode.isNotEmpty) {
         await prefs.setString(_key(uid, 'parentCode'), parentCode);
       }
-      if (idToken != null && idToken.isNotEmpty) {
-        await prefs.setString(_key(uid, 'idToken'), idToken);
-        await prefs.setInt(_key(uid, 'tokenSavedAt'), DateTime.now().millisecondsSinceEpoch);
-      }
+      // Remove tokens written by earlier app versions; never store a new JWT here.
+      await prefs.remove(_key(uid, 'idToken'));
+      await prefs.remove(_key(uid, 'tokenSavedAt'));
     } catch (_) {}
   }
 
@@ -63,8 +63,6 @@ class UserSessionService {
           'circleName': prefs.getString(_key(uid, 'circleName')),
           'childCode': prefs.getString(_key(uid, 'childCode')),
           'parentCode': prefs.getString(_key(uid, 'parentCode')),
-          'idToken': prefs.getString(_key(uid, 'idToken')),
-          'tokenSavedAt': prefs.getInt(_key(uid, 'tokenSavedAt')),
         };
       }
     } catch (_) {}
@@ -104,4 +102,3 @@ class UserSessionService {
     } catch (_) {}
   }
 }
-

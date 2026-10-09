@@ -1,7 +1,9 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../../../core/providers/app_state_provider.dart';
+import '../../../core/models/member.dart';
+import '../../../core/services/location_service.dart';
 import '../../../core/services/user_session_service.dart';
 import '../domain/circle_model.dart';
 import '../domain/user_account_model.dart';
@@ -9,357 +11,131 @@ import '../domain/user_account_model.dart';
 class AuthService {
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
+  final FirebaseFunctions _functions;
 
   AuthService({
     FirebaseAuth? auth,
     FirebaseFirestore? firestore,
-  })  : _auth = auth ?? FirebaseAuth.instance,
-        _firestore = firestore ?? FirebaseFirestore.instance;
+    FirebaseFunctions? functions,
+  }) : _auth = auth ?? FirebaseAuth.instance,
+       _firestore = firestore ?? FirebaseFirestore.instance,
+       _functions = functions ?? FirebaseFunctions.instance;
 
   User? get currentUser => _auth.currentUser;
-
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
-  // 1. Sign Up
   Future<UserAccountModel> signUp({
     required String email,
     required String password,
     required String displayName,
   }) async {
+    if (displayName.trim().isEmpty || displayName.trim().length > 80) {
+      throw Exception('Enter a name of 1–80 characters.');
+    }
+    final credential = await _auth.createUserWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+    final user = credential.user!;
     try {
-      final credential = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-
-      final user = credential.user!;
-      await user.updateDisplayName(displayName);
-
+      await user.updateDisplayName(displayName.trim());
       final account = UserAccountModel(
         uid: user.uid,
-        email: email,
-        displayName: displayName,
-        role: UserRole.parent, // Default until circle created or joined
-        createdAt: DateTime.now(),
+        email: email.trim(),
+        displayName: displayName.trim(),
+        role: UserRole.child,
+        createdAt: DateTime.now().toUtc(),
       );
-
       await _firestore.collection('users').doc(user.uid).set(account.toMap());
-
-      try {
-        final idToken = await user.getIdToken();
-        await UserSessionService.saveUserSession(
-          uid: user.uid,
-          role: 'parent',
-          circleId: '',
-          email: email,
-          userName: displayName,
-          idToken: idToken,
-        );
-      } catch (_) {}
-
       return account;
-    } on FirebaseAuthException catch (e) {
-      throw Exception(e.message ?? 'Authentication failed');
+    } catch (_) {
+      await user.delete();
+      rethrow;
     }
   }
 
-  // 2. Sign In (Restores circleId and role from Firestore or local UserSessionService)
   Future<UserAccountModel> signIn({
     required String email,
     required String password,
   }) async {
-    try {
-      final credential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-
-      final user = credential.user!;
-      DocumentSnapshot<Map<String, dynamic>>? doc;
-      try {
-        doc = await _firestore.collection('users').doc(user.uid).get();
-      } catch (_) {}
-
-      UserAccountModel account;
-
-      if (doc != null && doc.exists && doc.data() != null) {
-        account = UserAccountModel.fromMap(doc.data()!, user.uid);
-      } else {
-        account = UserAccountModel(
-          uid: user.uid,
-          email: email,
-          displayName: user.displayName ?? 'Family Member',
-          role: UserRole.parent,
-          createdAt: DateTime.now(),
-        );
-      }
-
-      String? idToken;
-      try {
-        idToken = await user.getIdToken();
-      } catch (_) {}
-
-      // Check local session cache if circleId is missing or empty
-      if (account.circleId == null || account.circleId!.isEmpty) {
-        final cached = await UserSessionService.getUserSession(user.uid);
-        if (cached != null && cached['circleId'] != null) {
-          final cachedRole = cached['role'] == 'parent' ? UserRole.parent : UserRole.child;
-          account = account.copyWith(
-            circleId: cached['circleId'],
-            role: cachedRole,
-          );
-          // Sync restored data back to Firestore
-          try {
-            await _firestore.collection('users').doc(user.uid).set({
-              'role': cached['role'],
-              'circleId': cached['circleId'],
-            }, SetOptions(merge: true));
-          } catch (_) {}
-        }
-      }
-
-      // Check circle details if circleId is present
-      String? circleName;
-      String? childCode;
-      String? parentCode;
-      if (account.circleId != null && account.circleId!.isNotEmpty) {
-        try {
-          final cDoc = await _firestore.collection('circles').doc(account.circleId!).get();
-          if (cDoc.exists && cDoc.data() != null) {
-            final cData = cDoc.data()!;
-            circleName = cData['name'] as String?;
-            childCode = cData['childInviteCode'] as String?;
-            parentCode = cData['parentInviteCode'] as String?;
-          }
-        } catch (_) {}
-      }
-
-      // Save latest info & token to local session cache
-      await UserSessionService.saveUserSession(
-        uid: user.uid,
-        role: account.role == UserRole.parent ? 'parent' : 'child',
-        circleId: account.circleId ?? '',
-        circleName: circleName,
-        childCode: childCode,
-        parentCode: parentCode,
-        email: account.email,
-        userName: account.displayName,
-        idToken: idToken,
-      );
-
-      return account;
-    } on FirebaseAuthException catch (e) {
-      throw Exception(e.message ?? 'Sign in failed');
-    }
+    await _auth.signInWithEmailAndPassword(
+      email: email.trim(),
+      password: password,
+    );
+    return loadCurrentAccount();
   }
 
-  // 3. Create Circle (Assigns role: parent)
-  Future<CircleModel> createCircle({required String circleName}) async {
+  /// Preferences are display metadata, never authority for identity or membership.
+  Future<UserAccountModel> loadCurrentAccount() async {
     final user = _auth.currentUser;
-    if (user == null) throw Exception('No authenticated user found');
-
-    final circleId = _firestore.collection('circles').doc().id;
-    final parentCode = generateInviteCode('PARENT');
-    final childCode = generateInviteCode('FAMILY');
-
-    final circle = CircleModel(
-      id: circleId,
-      name: circleName,
-      parentInviteCode: parentCode,
-      childInviteCode: childCode,
-      createdBy: user.uid,
-      memberIds: [user.uid],
-      createdAt: DateTime.now(),
-    );
-
-    try {
-      await _firestore.collection('circles').doc(circleId).set(circle.toMap());
-      await _firestore.collection('users').doc(user.uid).set({
-        'role': 'parent',
-        'circleId': circleId,
-        'displayName': user.displayName ?? 'Family Member',
-        'email': user.email ?? '',
-      }, SetOptions(merge: true));
-    } catch (_) {}
-
-    String? idToken;
-    try {
-      idToken = await user.getIdToken();
-    } catch (_) {}
-
-    // Persist to local session cache
+    if (user == null) throw Exception('Please sign in.');
+    final doc = await _firestore
+        .collection('users')
+        .doc(user.uid)
+        .get(const GetOptions(source: Source.server));
+    if (!doc.exists || doc.data() == null) {
+      throw Exception(
+        'Account profile is unavailable. Please contact support.',
+      );
+    }
+    final account = UserAccountModel.fromMap(doc.data()!, user.uid);
     await UserSessionService.saveUserSession(
       uid: user.uid,
-      role: 'parent',
-      circleId: circleId,
-      circleName: circleName,
-      childCode: childCode,
-      parentCode: parentCode,
-      email: user.email,
-      userName: user.displayName,
-      idToken: idToken,
+      role: account.role.name,
+      circleId: account.circleId ?? '',
+      email: account.email,
+      userName: account.displayName,
     );
-
-    return circle;
+    return account;
   }
 
-  // 4. Join Circle by Code (Role derived from invite code type)
-  Future<UserAccountModel> joinCircleByCode({required String inviteCode}) async {
-    final user = _auth.currentUser;
-    final normalizedCode = inviteCode.trim().toUpperCase();
-    if (normalizedCode.isEmpty) {
-      throw Exception('Please enter a valid invite code');
-    }
-
-    // Try code variants (e.g. 7K4X, FAMILY-7K4X, PARENT-7K4X)
-    List<String> childVariants = [normalizedCode];
-    List<String> parentVariants = [normalizedCode];
-
-    if (!normalizedCode.contains('-')) {
-      childVariants.add('FAMILY-$normalizedCode');
-      parentVariants.add('PARENT-$normalizedCode');
-    }
-
-    UserRole assignedRole = UserRole.child;
-    DocumentSnapshot<Map<String, dynamic>>? circleDoc;
-
-    try {
-      if (normalizedCode.startsWith('PARENT') || normalizedCode.startsWith('P-')) {
-        // Query by parent invite code first
-        final parentMatchQuery = await _firestore
-            .collection('circles')
-            .where('parentInviteCode', whereIn: parentVariants)
-            .limit(1)
-            .get();
-
-        if (parentMatchQuery.docs.isNotEmpty) {
-          assignedRole = UserRole.parent;
-          circleDoc = parentMatchQuery.docs.first;
-        }
-      } else {
-        // Query by child invite code first
-        final childMatchQuery = await _firestore
-            .collection('circles')
-            .where('childInviteCode', whereIn: childVariants)
-            .limit(1)
-            .get();
-
-        if (childMatchQuery.docs.isNotEmpty) {
-          assignedRole = UserRole.child;
-          circleDoc = childMatchQuery.docs.first;
-        } else {
-          // Fallback: check parent invite code
-          final parentMatchQuery = await _firestore
-              .collection('circles')
-              .where('parentInviteCode', whereIn: parentVariants)
-              .limit(1)
-              .get();
-
-          if (parentMatchQuery.docs.isNotEmpty) {
-            assignedRole = UserRole.parent;
-            circleDoc = parentMatchQuery.docs.first;
-          }
-        }
-      }
-    } catch (_) {
-      if (normalizedCode.startsWith('PARENT') || normalizedCode.startsWith('P-')) {
-        assignedRole = UserRole.parent;
-      } else {
-        assignedRole = UserRole.child;
-      }
-    }
-
-    final circleId = circleDoc?.id ?? 'circle_${normalizedCode.replaceAll('-', '_').toLowerCase()}';
-    final roleString = assignedRole == UserRole.parent ? 'parent' : 'child';
-
-    String? idToken;
-    try {
-      if (user != null) {
-        idToken = await user.getIdToken();
-      }
-    } catch (_) {}
-
-    final circleName = circleDoc?.data()?['name'] as String?;
-    final childCode = circleDoc?.data()?['childInviteCode'] as String?;
-    final parentCode = circleDoc?.data()?['parentInviteCode'] as String?;
-
-    if (user != null) {
-      // Save local user session cache
-      await UserSessionService.saveUserSession(
-        uid: user.uid,
-        role: roleString,
-        circleId: circleId,
-        circleName: circleName,
-        childCode: childCode,
-        parentCode: parentCode,
-        email: user.email,
-        userName: user.displayName,
-        idToken: idToken,
-      );
-
-      try {
-        if (circleDoc != null) {
-          await _firestore.collection('circles').doc(circleId).update({
-            'memberIds': FieldValue.arrayUnion([user.uid]),
-          });
-        }
-        await _firestore.collection('users').doc(user.uid).set({
-          'role': roleString,
-          'circleId': circleId,
-          'displayName': user.displayName ?? 'Family Member',
-          'email': user.email ?? '',
-          'batteryLevel': 100,
-          'isCharging': false,
-          'lastSeen': DateTime.now().toIso8601String(),
-        }, SetOptions(merge: true));
-
-        final updatedDoc = await _firestore.collection('users').doc(user.uid).get();
-        if (updatedDoc.exists && updatedDoc.data() != null) {
-          return UserAccountModel.fromMap(updatedDoc.data()!, user.uid);
-        }
-      } catch (_) {}
-
-      return UserAccountModel(
-        uid: user.uid,
-        email: user.email ?? '',
-        displayName: user.displayName ?? 'Family Member',
-        role: assignedRole,
-        circleId: circleId,
-        createdAt: DateTime.now(),
-      );
-    } else {
-      return UserAccountModel(
-        uid: 'demo_user',
-        email: 'demo@familyguard.app',
-        displayName: 'Family Member',
-        role: assignedRole,
-        circleId: circleId,
-        createdAt: DateTime.now(),
-      );
-    }
+  Future<CircleModel> createCircle({required String circleName}) async {
+    if (_auth.currentUser == null) throw Exception('Please sign in.');
+    final result = await _functions.httpsCallable('createCircle').call({
+      'circleName': circleName.trim(),
+    });
+    final data = Map<String, dynamic>.from(result.data as Map);
+    return CircleModel.fromMap(data, data['id'] as String);
   }
 
-  // 5. Sign Out & Invalidate Session / JWT Token
+  Future<UserAccountModel> joinCircleByCode({
+    required String inviteCode,
+  }) async {
+    if (_auth.currentUser == null) throw Exception('Please sign in.');
+    if (inviteCode.trim().isEmpty) {
+      throw Exception('Enter the complete invite code.');
+    }
+    await _functions.httpsCallable('joinCircle').call({
+      'inviteCode': inviteCode.trim().toUpperCase(),
+    });
+    return loadCurrentAccount();
+  }
+
   Future<void> signOut() async {
-    final user = _auth.currentUser;
-    if (user != null) {
-      final uid = user.uid;
-      try {
-        await user.getIdToken(true); // Force refresh/check before sign out
-      } catch (_) {}
-      await UserSessionService.clearUserSession(uid);
-    }
+    await LocationService.instance.stop();
+    final uid = _auth.currentUser?.uid;
     await _auth.signOut();
+    if (uid != null) await UserSessionService.clearUserSession(uid);
+    await LocationService.clearDebugLog();
   }
 
-  // 6. Real-time Streams
   Stream<CircleModel?> streamCircle(String circleId) {
     if (circleId.isEmpty) return Stream.value(null);
-    return _firestore.collection('circles').doc(circleId).snapshots().map((snapshot) {
-      if (!snapshot.exists || snapshot.data() == null) return null;
-      return CircleModel.fromMap(snapshot.data()!, snapshot.id);
+    return _firestore.collection('circles').doc(circleId).snapshots().map((
+      doc,
+    ) {
+      if (!doc.exists || doc.data() == null) return null;
+      return CircleModel.fromMap(doc.data()!, doc.id);
     });
   }
+
+  Stream<Map<String, dynamic>?> streamInvites(String circleId) => _firestore
+      .collection('circles')
+      .doc(circleId)
+      .collection('private')
+      .doc('invites')
+      .snapshots()
+      .map((doc) => doc.data());
 
   Stream<List<UserAccountModel>> streamCircleMembers(String circleId) {
     if (circleId.isEmpty) return Stream.value([]);
@@ -367,19 +143,20 @@ class AuthService {
         .collection('users')
         .where('circleId', isEqualTo: circleId)
         .snapshots()
-        .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => UserAccountModel.fromMap(doc.data(), doc.id))
-          .toList();
-    });
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => UserAccountModel.fromMap(doc.data(), doc.id))
+              .toList(),
+        );
   }
 
-  // Helper code generator
+  // Production codes are generated only by the server; retained for format tests.
   static String generateInviteCode(String prefix) {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-    final random = Random();
-    final randomPart = List.generate(4, (_) => chars[random.nextInt(chars.length)]).join();
-    return '$prefix-$randomPart';
+    final random = Random.secure();
+    final suffix = List.generate(
+      8,
+      (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+    ).join().toUpperCase();
+    return '$prefix-$suffix';
   }
 }
-

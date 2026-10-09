@@ -361,6 +361,10 @@ class _MockHttpHeaders implements HttpHeaders {
 
 class _MockHttpClientResponse implements HttpClientResponse {
   @override
+  String get reasonPhrase => 'OK';
+  @override
+  bool get persistentConnection => false;
+  @override
   int get statusCode => 200;
 
   @override

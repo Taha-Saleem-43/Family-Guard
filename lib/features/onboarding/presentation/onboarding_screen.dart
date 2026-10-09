@@ -75,7 +75,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         final displayName = _nameController.text.trim();
         final account = await authService.signUp(
           email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
+          password: _passwordController.text,
           displayName: displayName,
         );
         ref.read(appStateProvider.notifier).setUserSession(
@@ -88,7 +88,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       } else {
         final account = await authService.signIn(
           email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
+          password: _passwordController.text,
         );
         ref.read(appStateProvider.notifier).setUserSession(
           userId: account.uid,

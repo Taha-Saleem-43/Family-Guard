@@ -8,17 +8,21 @@ import '../models/member.dart';
 import '../models/movement_activity.dart';
 import '../services/firestore_location_service.dart';
 import '../services/location_service.dart';
+import '../services/location_sync_service.dart';
+import '../services/location_fix_policy.dart';
 import '../theme/app_colors.dart';
 import 'app_state_provider.dart';
 
 class MemberStateNotifier extends StateNotifier<List<Member>> {
   final Ref _ref;
   final Battery _battery = Battery();
-  final FirestoreLocationService _firestoreLocationService = FirestoreLocationService();
+  final FirestoreLocationService _firestoreLocationService =
+      LocationSyncService.uploader;
 
   StreamSubscription<BatteryState>? _batterySub;
   StreamSubscription<List<Member>>? _firestoreCircleSub;
   Timer? _batteryPollTimer;
+  StreamSubscription<tl.Location>? _locationSub, _motionSub;
 
   MemberStateNotifier(this._ref) : super([]) {
     _initMembers();
@@ -38,11 +42,10 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
         name: '$userName (You)',
         avatar: isParent ? '👨' : '👩‍🦰',
         role: isParent ? UserRole.parent : UserRole.child,
-        address: 'Active Location',
-        latitude: 33.6844,
-        longitude: 73.0479,
-        lastSeen: DateTime.now(),
-        batteryLevel: 95,
+        address: 'Waiting for location',
+        lastSeen: DateTime.fromMillisecondsSinceEpoch(0),
+        isStale: true,
+        batteryLevel: 0,
         isCharging: false,
         speedMph: 0.0,
         movementActivity: MovementActivity.stationary,
@@ -53,14 +56,19 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
 
   void _listenToFirestoreCircle() {
     _ref.listen<AppState>(appStateProvider, (previous, next) {
-      if (next.circleId != previous?.circleId || next.userId != previous?.userId) {
+      if (next.circleId != previous?.circleId ||
+          next.userId != previous?.userId) {
+        _initMembers();
         _subscribeToCircleStream(next.circleId, next.userId);
       }
     });
 
     final currentAppState = _ref.read(appStateProvider);
     if (currentAppState.circleId.isNotEmpty) {
-      _subscribeToCircleStream(currentAppState.circleId, currentAppState.userId);
+      _subscribeToCircleStream(
+        currentAppState.circleId,
+        currentAppState.userId,
+      );
     }
   }
 
@@ -70,49 +78,31 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
 
     _firestoreCircleSub = _firestoreLocationService
         .streamCircleMembers(circleId: circleId, currentUid: currentUid)
-        .listen((remoteMembers) {
-      if (remoteMembers.isEmpty) return;
-
-      final updatedList = <Member>[];
-      final remoteMemberIds = remoteMembers.map((m) => m.id).toSet();
-
-      // Maintain local self if present
-      for (final m in state) {
-        if (!remoteMemberIds.contains(m.id)) {
-          updatedList.add(m);
-        }
-      }
-
-      // Add/update remote members
-      for (final remote in remoteMembers) {
-        final existingIndex = updatedList.indexWhere((m) => m.id == remote.id);
-        if (existingIndex != -1) {
-          final existing = updatedList[existingIndex];
-          final isSelf = remote.id == currentUid || remote.id == 'm_self' || existing.id == 'm_self';
-          if (isSelf) {
-            // Keep local live status (battery, location, activity) for self but sync remote properties
-            updatedList[existingIndex] = existing.copyWith(
-              name: remote.name,
-              avatar: remote.avatar,
-              role: remote.role,
-              pinColor: remote.pinColor,
-              isSosActive: remote.isSosActive,
-            );
-          } else {
-            updatedList[existingIndex] = remote.copyWith(
-              latitude: existing.latitude ?? remote.latitude,
-              longitude: existing.longitude ?? remote.longitude,
-            );
-          }
-        } else {
-          updatedList.add(remote);
-        }
-      }
-
-      state = updatedList;
-    }, onError: (e) {
-      debugPrint('[MemberStateNotifier] Circle stream error: $e');
-    });
+        .listen(
+          (remoteMembers) {
+            final localSelf = state
+                .where((m) => m.id == currentUid)
+                .firstOrNull;
+            final updatedList = remoteMembers.map((remote) {
+              if (remote.id != currentUid ||
+                  localSelf == null ||
+                  localSelf.latitude == null) {
+                return remote;
+              }
+              return localSelf.copyWith(
+                name: remote.name,
+                role: remote.role,
+                avatar: remote.avatar,
+                pinColor: remote.pinColor,
+                isSosActive: remote.isSosActive,
+              );
+            }).toList();
+            state = updatedList;
+          },
+          onError: (e) {
+            debugPrint('[MemberStateNotifier] Circle stream error: $e');
+          },
+        );
   }
 
   /// Sets self SOS active state and updates pin border color back to default when false
@@ -122,7 +112,9 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
 
     state = state.map((member) {
       if (member.id == selfId || member.id == 'm_self') {
-        final defaultPinColor = member.role == UserRole.parent ? AppColors.primary : AppColors.teal;
+        final defaultPinColor = member.role == UserRole.parent
+            ? AppColors.primary
+            : AppColors.teal;
         return member.copyWith(
           isSosActive: isActive,
           pinColor: isActive ? AppColors.sosRed : defaultPinColor,
@@ -136,23 +128,32 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
     try {
       final initialLevel = await _battery.batteryLevel;
       final initialStatus = await _battery.batteryState;
-      final initialCharging = initialStatus == BatteryState.charging || initialStatus == BatteryState.full;
+      if (!mounted) return;
+      final initialCharging =
+          initialStatus == BatteryState.charging ||
+          initialStatus == BatteryState.full;
       _updateSelfBattery(initialLevel, isCharging: initialCharging);
 
       _batterySub = _battery.onBatteryStateChanged.listen((batteryState) async {
         final level = await _battery.batteryLevel;
-        final isCharging = batteryState == BatteryState.charging || batteryState == BatteryState.full;
+        if (!mounted) return;
+        final isCharging =
+            batteryState == BatteryState.charging ||
+            batteryState == BatteryState.full;
         _updateSelfBattery(level, isCharging: isCharging);
       });
 
       // Poll battery level every 120 seconds to catch percentage drops while unplugged/discharging
       _batteryPollTimer?.cancel();
-      _batteryPollTimer = Timer.periodic(const Duration(seconds: 120), (_) async {
+      _batteryPollTimer = Timer.periodic(const Duration(seconds: 120), (
+        _,
+      ) async {
         try {
           final level = await _battery.batteryLevel;
           final state = await _battery.batteryState;
-          final isCharging = state == BatteryState.charging || state == BatteryState.full;
-          _updateSelfBattery(level, isCharging: isCharging);
+          final isCharging =
+              state == BatteryState.charging || state == BatteryState.full;
+          if (mounted) _updateSelfBattery(level, isCharging: isCharging);
         } catch (_) {}
       });
     } catch (e) {
@@ -161,10 +162,25 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
   }
 
   void _listenToLocationUpdates() {
-    LocationService.instance.onLocation((tl.Location location) {
-      final speedMph = location.coords.speed * 2.23694;
+    _locationSub = LocationService.instance.onLocation((tl.Location location) {
+      if (!mounted ||
+          !LocationFixPolicy.accepts(
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            accuracy: location.coords.accuracy,
+            capturedAt: DateTime.tryParse(location.timestamp),
+            now: DateTime.now(),
+          )) {
+        return;
+      }
+      final speedMph = location.coords.speed < 0
+          ? 0.0
+          : location.coords.speed * 2.23694;
       final rawActivity = location.activity.type.toString();
-      final activity = MovementActivity.fromSpeed(speedMph, rawActivity: rawActivity);
+      final activity = MovementActivity.fromSpeed(
+        speedMph,
+        rawActivity: rawActivity,
+      );
 
       _updateSelfLocation(
         lat: location.coords.latitude,
@@ -174,10 +190,27 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
       );
     });
 
-    LocationService.instance.onMotionChange((tl.Location location) {
-      final speedMph = location.coords.speed * 2.23694;
+    _motionSub = LocationService.instance.onMotionChange((
+      tl.Location location,
+    ) {
+      if (!mounted ||
+          !LocationFixPolicy.accepts(
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            accuracy: location.coords.accuracy,
+            capturedAt: DateTime.tryParse(location.timestamp),
+            now: DateTime.now(),
+          )) {
+        return;
+      }
+      final speedMph = location.coords.speed < 0
+          ? 0.0
+          : location.coords.speed * 2.23694;
       final activity = location.isMoving
-          ? MovementActivity.fromSpeed(speedMph, rawActivity: location.activity.type.toString())
+          ? MovementActivity.fromSpeed(
+              speedMph,
+              rawActivity: location.activity.type.toString(),
+            )
           : MovementActivity.stationary;
 
       _updateSelfLocation(
@@ -198,6 +231,7 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
     final appState = _ref.read(appStateProvider);
     final selfId = appState.userId.isNotEmpty ? appState.userId : 'm_self';
 
+    if (!mounted || appState.userId.isEmpty) return;
     Member? selfMember;
 
     state = state.map((member) {
@@ -208,26 +242,16 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
           speedMph: speedMph,
           movementActivity: activity,
           lastSeen: DateTime.now(),
+          isStale: false,
         );
         return selfMember!;
       }
       return member;
     }).toList();
-
-    if (selfMember != null && appState.userId.isNotEmpty) {
-      _firestoreLocationService.updateUserLocation(
-        uid: appState.userId,
-        latitude: lat,
-        longitude: lng,
-        speedMph: speedMph,
-        activity: activity,
-        batteryLevel: selfMember!.batteryLevel,
-        isCharging: selfMember!.isCharging,
-      );
-    }
   }
 
   void _updateSelfBattery(int level, {required bool isCharging}) {
+    if (!mounted) return;
     final appState = _ref.read(appStateProvider);
     final selfId = appState.userId.isNotEmpty ? appState.userId : 'm_self';
 
@@ -243,18 +267,6 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
       }
       return member;
     }).toList();
-
-    if (selfMember != null && appState.userId.isNotEmpty) {
-      _firestoreLocationService.updateUserLocation(
-        uid: appState.userId,
-        latitude: selfMember!.latitude ?? 0.0,
-        longitude: selfMember!.longitude ?? 0.0,
-        speedMph: selfMember!.speedMph,
-        activity: selfMember!.movementActivity,
-        batteryLevel: level,
-        isCharging: isCharging,
-      );
-    }
   }
 
   /// Manually cycle member activity state for testing/interactive inspection
@@ -290,7 +302,11 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
   }
 
   /// Manually update member battery level for testing
-  void setMemberBattery(String memberId, int batteryLevel, {bool isCharging = false}) {
+  void setMemberBattery(
+    String memberId,
+    int batteryLevel, {
+    bool isCharging = false,
+  }) {
     state = state.map((m) {
       if (m.id == memberId) {
         return m.copyWith(batteryLevel: batteryLevel, isCharging: isCharging);
@@ -301,6 +317,8 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
 
   @override
   void dispose() {
+    _locationSub?.cancel();
+    _motionSub?.cancel();
     _batteryPollTimer?.cancel();
     _batterySub?.cancel();
     _firestoreCircleSub?.cancel();
@@ -308,8 +326,11 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
   }
 }
 
-final memberStateProvider = StateNotifierProvider<MemberStateNotifier, List<Member>>((ref) {
-  return MemberStateNotifier(ref);
-});
+final memberStateProvider =
+    StateNotifierProvider<MemberStateNotifier, List<Member>>((ref) {
+      return MemberStateNotifier(ref);
+    });
 
-final selectedActivityFilterProvider = StateProvider<MovementActivity?>((ref) => null);
+final selectedActivityFilterProvider = StateProvider<MovementActivity?>(
+  (ref) => null,
+);

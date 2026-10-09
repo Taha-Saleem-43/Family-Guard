@@ -31,9 +31,9 @@ class LocationHistoryPoint {
       'longitude': longitude,
       'speedMph': speedMph,
       'movementActivity': movementActivity.name,
-      'timestamp': timestamp.toIso8601String(),
-      'lastSeen': timestamp.toIso8601String(),
-      'expireAt': expireAt.toIso8601String(),
+      'timestamp': Timestamp.fromDate(timestamp.toUtc()),
+      'lastSeen': Timestamp.fromDate(timestamp.toUtc()),
+      'expireAt': Timestamp.fromDate(expireAt.toUtc()),
       if (address != null) 'address': address,
       if (placeName != null) 'placeName': placeName,
     };
@@ -53,7 +53,9 @@ class LocationHistoryPoint {
     final speed = (map['speedMph'] as num?)?.toDouble() ?? 0.0;
     final activityStr = map['movementActivity'] as String? ?? 'stationary';
     final activity = MovementActivity.fromString(activityStr);
-    final stamp = map['timestamp'] != null ? parseDate(map['timestamp']) : parseDate(map['lastSeen']);
+    final stamp = map['timestamp'] != null
+        ? parseDate(map['timestamp'])
+        : parseDate(map['lastSeen']);
     final expire = map['expireAt'] != null
         ? parseDate(map['expireAt'])
         : stamp.add(const Duration(days: 30));

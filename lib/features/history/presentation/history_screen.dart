@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 import '../../../core/models/history_timeline_item.dart';
 import '../../../core/providers/app_state_provider.dart';
 import '../../../core/providers/member_status_provider.dart';
-import '../../../core/services/history_cron_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../providers/history_provider.dart';
 
@@ -27,12 +26,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final selectedMemberId = ref.watch(selectedHistoryMemberIdProvider) ?? appState.userId;
     final timelineItems = ref.watch(historyTimelineProvider);
     final polylinePoints = ref.watch(historyRoutePolylineProvider);
-    final cronStatus = ref.watch(historyCronStatusProvider);
 
-    final selectedMember = members.firstWhere(
-      (m) => m.id == selectedMemberId || m.id == 'm_self',
-      orElse: () => members.isNotEmpty ? members.first : members.first,
-    );
+    final selectedMember = members.where(
+      (m) => m.id == selectedMemberId || m.id == 'm_self').firstOrNull
+      ?? members.firstOrNull;
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -42,7 +39,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(rawLocationHistoryProvider);
-          await HistoryCronService.instance.runPurgeIfNeeded(uid: selectedMemberId);
         },
         child: Column(
           children: [
@@ -210,7 +206,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         child: Row(
                           children: [
                             Text(
-                              selectedMember.avatar,
+                              selectedMember?.avatar ?? '👤',
                               style: const TextStyle(fontSize: 14),
                             ),
                             const SizedBox(width: 6),
@@ -238,9 +234,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             const Icon(Icons.shield_outlined, size: 12, color: Colors.white),
                             const SizedBox(width: 4),
                             Text(
-                              cronStatus.value != null
-                                  ? 'Purged ${DateFormat('MMM d').format(cronStatus.value!)} (<30d)'
-                                  : 'Auto-Clean <30d Active',
+                              '30-day history window',
                               style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white),
                             ),
                           ],

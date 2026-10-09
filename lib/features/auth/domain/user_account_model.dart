@@ -1,5 +1,5 @@
 import 'package:equatable/equatable.dart';
-import '../../../core/providers/app_state_provider.dart';
+import '../../../core/models/member.dart';
 
 class UserAccountModel extends Equatable {
   final String uid;
@@ -61,5 +61,12 @@ class UserAccountModel extends Equatable {
   }
 
   @override
-  List<Object?> get props => [uid, email, displayName, role, circleId, createdAt];
+  List<Object?> get props => [
+    uid,
+    email,
+    displayName,
+    role,
+    circleId,
+    createdAt,
+  ];
 }

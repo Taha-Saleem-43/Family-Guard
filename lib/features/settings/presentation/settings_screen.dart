@@ -8,6 +8,7 @@ import '../../../core/providers/member_status_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../../map/presentation/widgets/member_detail_sheet.dart';
+import 'permission_status_card.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -25,16 +26,20 @@ class SettingsScreen extends ConsumerWidget {
         SnackBar(
           content: Row(
             children: [
-              const Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text('$label code ($code) copied to clipboard!'),
+              const Icon(
+                Icons.check_circle_rounded,
+                color: Colors.white,
+                size: 20,
               ),
+              const SizedBox(width: 8),
+              Expanded(child: Text('$label code ($code) copied to clipboard!')),
             ],
           ),
           backgroundColor: AppColors.primary,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -42,9 +47,7 @@ class SettingsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: AppBar(
-        title: const Text('Settings & Circle'),
-      ),
+      appBar: AppBar(title: const Text('Settings & Circle')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -63,7 +66,11 @@ class SettingsScreen extends ConsumerWidget {
                           color: AppColors.primaryLight,
                           borderRadius: BorderRadius.circular(14),
                         ),
-                        child: const Icon(Icons.groups_rounded, size: 28, color: AppColors.primary),
+                        child: const Icon(
+                          Icons.groups_rounded,
+                          size: 28,
+                          color: AppColors.primary,
+                        ),
                       ),
                       const SizedBox(width: 14),
                       Expanded(
@@ -72,12 +79,20 @@ class SettingsScreen extends ConsumerWidget {
                           children: [
                             Text(
                               appState.circleName,
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
                             const SizedBox(height: 2),
                             Text(
                               'Active Role: ${isParent ? "Parent / Guardian" : "Child Member"}',
-                              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, fontWeight: FontWeight.w600),
+                              style: const TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textSecondary,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                           ],
                         ),
@@ -94,8 +109,22 @@ class SettingsScreen extends ConsumerWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text('Circle Members', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
-              Text('${members.length} Active', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textMuted)),
+              const Text(
+                'Circle Members',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              Text(
+                '${members.length} Active',
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textMuted,
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -104,7 +133,8 @@ class SettingsScreen extends ConsumerWidget {
               children: [
                 for (int i = 0; i < members.length; i++) ...[
                   _buildMemberRow(context, ref, members[i]),
-                  if (i < members.length - 1) const Divider(height: 1, indent: 56),
+                  if (i < members.length - 1)
+                    const Divider(height: 1, indent: 56),
                 ],
               ],
             ),
@@ -116,7 +146,11 @@ class SettingsScreen extends ConsumerWidget {
             Card(
               color: AppColors.primaryLight,
               child: InkWell(
-                onTap: () => copyToClipboard(context, appState.childInviteCode, 'Child Invite'),
+                onTap: () => copyToClipboard(
+                  context,
+                  appState.childInviteCode,
+                  'Child Invite',
+                ),
                 borderRadius: BorderRadius.circular(16),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -126,18 +160,37 @@ class SettingsScreen extends ConsumerWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Child Member Invite Code', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: AppColors.primary)),
+                            const Text(
+                              'Child Member Invite Code',
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.primary,
+                              ),
+                            ),
                             const SizedBox(height: 4),
                             Text(
                               appState.childInviteCode,
-                              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900, letterSpacing: 2, color: AppColors.textPrimary),
+                              style: const TextStyle(
+                                fontSize: 22,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 2,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
                           ],
                         ),
                       ),
                       IconButton(
-                        onPressed: () => copyToClipboard(context, appState.childInviteCode, 'Child Invite'),
-                        icon: const Icon(Icons.copy_rounded, color: AppColors.primary),
+                        onPressed: () => copyToClipboard(
+                          context,
+                          appState.childInviteCode,
+                          'Child Invite',
+                        ),
+                        icon: const Icon(
+                          Icons.copy_rounded,
+                          color: AppColors.primary,
+                        ),
                         tooltip: 'Copy Child Invite Code',
                       ),
                     ],
@@ -153,7 +206,11 @@ class SettingsScreen extends ConsumerWidget {
                 side: const BorderSide(color: AppColors.border, width: 1.5),
               ),
               child: InkWell(
-                onTap: () => copyToClipboard(context, appState.parentInviteCode, 'Co-Parent Invite'),
+                onTap: () => copyToClipboard(
+                  context,
+                  appState.parentInviteCode,
+                  'Co-Parent Invite',
+                ),
                 borderRadius: BorderRadius.circular(16),
                 child: Padding(
                   padding: const EdgeInsets.all(14),
@@ -163,18 +220,38 @@ class SettingsScreen extends ConsumerWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Co-Parent Invite Code (Full Admin)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: AppColors.textSecondary)),
+                            const Text(
+                              'Co-Parent Invite Code (Full Admin)',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
                             const SizedBox(height: 2),
                             Text(
                               appState.parentInviteCode,
-                              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, letterSpacing: 1.5, color: AppColors.textPrimary),
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 1.5,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
                           ],
                         ),
                       ),
                       IconButton(
-                        onPressed: () => copyToClipboard(context, appState.parentInviteCode, 'Co-Parent Invite'),
-                        icon: const Icon(Icons.copy_rounded, color: AppColors.textSecondary, size: 20),
+                        onPressed: () => copyToClipboard(
+                          context,
+                          appState.parentInviteCode,
+                          'Co-Parent Invite',
+                        ),
+                        icon: const Icon(
+                          Icons.copy_rounded,
+                          color: AppColors.textSecondary,
+                          size: 20,
+                        ),
                         tooltip: 'Copy Parent Invite Code',
                       ),
                     ],
@@ -186,22 +263,19 @@ class SettingsScreen extends ConsumerWidget {
           ],
 
           // Permissions Status Dashboard
-          const Text('Permission Status Dashboard', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
+          const Text(
+            'Permission Status Dashboard',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              color: AppColors.textPrimary,
+            ),
+          ),
           const SizedBox(height: 8),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  _buildPermissionRow('Location Permission', 'Always Allowed', isGranted: true),
-                  const Divider(height: 20),
-                  _buildPermissionRow('Background Tracking', 'Tracelet Engine Active', isGranted: true),
-                  const Divider(height: 20),
-                  _buildPermissionRow('Battery Optimization', 'Unrestricted', isGranted: true),
-                  const Divider(height: 20),
-                  _buildPermissionRow('Notifications', 'Granted', isGranted: true),
-                ],
-              ),
+              child: Column(children: [const PermissionStatusCard()]),
             ),
           ),
           const SizedBox(height: 24),
@@ -214,14 +288,31 @@ class SettingsScreen extends ConsumerWidget {
                 foregroundColor: AppColors.sosRed,
                 side: const BorderSide(color: AppColors.sosRed),
                 padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
               onPressed: () async {
-                await ref.read(authServiceProvider).signOut();
-                ref.read(appStateProvider.notifier).resetToOnboarding();
+                try {
+                  await ref.read(authServiceProvider).signOut();
+                  ref.read(appStateProvider.notifier).resetToOnboarding();
+                } catch (_) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Unable to stop sharing and sign out. Please try again.',
+                        ),
+                      ),
+                    );
+                  }
+                }
               },
               icon: const Icon(Icons.logout_rounded),
-              label: const Text('Sign Out / Reset Onboarding', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
+              label: const Text(
+                'Sign Out / Reset Onboarding',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -233,126 +324,141 @@ class SettingsScreen extends ConsumerWidget {
   Widget _buildMemberRow(BuildContext context, WidgetRef ref, Member member) {
     final activity = member.movementActivity;
     final batColor = BatteryHelper.getColor(member.batteryLevel);
-    final batIcon = BatteryHelper.getIcon(member.batteryLevel, isCharging: member.isCharging);
+    final batIcon = BatteryHelper.getIcon(
+      member.batteryLevel,
+      isCharging: member.isCharging,
+    );
     final isParentRole = member.role == UserRole.parent;
 
     return InkWell(
       onTap: () => MemberDetailSheet.show(context, member),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      child: Row(
-        children: [
-          Text(member.avatar, style: const TextStyle(fontSize: 24)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Text(member.name, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppColors.textPrimary)),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: isParentRole ? AppColors.primaryLight : AppColors.tealLight,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        isParentRole ? 'Parent' : 'Child',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                          color: isParentRole ? AppColors.primary : AppColors.teal,
+        child: Row(
+          children: [
+            Text(member.avatar, style: const TextStyle(fontSize: 24)),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        member.name,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w900,
+                          color: AppColors.textPrimary,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-
-                // Movement Status Badge & Battery Badge Row
-                Row(
-                  children: [
-                    // Movement Badge
-                    GestureDetector(
-                      onTap: () {
-                        ref.read(memberStateProvider.notifier).cycleMemberActivity(member.id);
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      const SizedBox(width: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
-                          color: activity.bgColor,
+                          color: isParentRole
+                              ? AppColors.primaryLight
+                              : AppColors.tealLight,
                           borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: activity.color.withValues(alpha: 0.3)),
+                        ),
+                        child: Text(
+                          isParentRole ? 'Parent' : 'Child',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                            color: isParentRole
+                                ? AppColors.primary
+                                : AppColors.teal,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+
+                  // Movement Status Badge & Battery Badge Row
+                  Row(
+                    children: [
+                      // Movement Badge
+                      GestureDetector(
+                        onTap: () {
+                          ref
+                              .read(memberStateProvider.notifier)
+                              .cycleMemberActivity(member.id);
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: activity.bgColor,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: activity.color.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                activity.emoji,
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                activity.label,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: activity.color,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 8),
+
+                      // Battery Badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: batColor.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(activity.emoji, style: const TextStyle(fontSize: 11)),
-                            const SizedBox(width: 3),
+                            Icon(batIcon, size: 12, color: batColor),
+                            const SizedBox(width: 2),
                             Text(
-                              activity.label,
-                              style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: activity.color),
+                              '${member.batteryLevel}%',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w900,
+                                color: batColor,
+                              ),
                             ),
                           ],
                         ),
                       ),
-                    ),
-
-                    const SizedBox(width: 8),
-
-                    // Battery Badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: batColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(batIcon, size: 12, color: batColor),
-                          const SizedBox(width: 2),
-                          Text(
-                            '${member.batteryLevel}%',
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: batColor),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
     );
   }
 
-  Widget _buildPermissionRow(String title, String status, {required bool isGranted}) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary)),
-              const SizedBox(height: 2),
-              Text(status, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8),
-        Icon(
-          isGranted ? Icons.check_circle_rounded : Icons.warning_rounded,
-          color: isGranted ? AppColors.teal : AppColors.sosRed,
-          size: 22,
-        ),
-      ],
-    );
-  }
 }

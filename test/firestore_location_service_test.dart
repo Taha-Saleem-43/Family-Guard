@@ -4,6 +4,15 @@ import 'package:family_guard/core/services/firestore_location_service.dart';
 
 void main() {
   group('FirestoreLocationService & Free-Tier Throttling Tests', () {
+    test('A different account always receives its own initial upload policy state', () async {
+      final service = FirestoreLocationService();
+      for (final uid in ['first', 'second']) {
+        await service.updateUserLocation(uid: uid, latitude: 33, longitude: 73,
+          speedMph: 0, activity: MovementActivity.stationary,
+          batteryLevel: 90, isCharging: false);
+        expect(service.lastUploadedUid, uid);
+      }
+    });
     test('updateUserLocation enforces 50m / 45s / 180s / 5% battery thresholds', () async {
       final service = FirestoreLocationService();
 

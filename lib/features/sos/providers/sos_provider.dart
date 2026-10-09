@@ -57,7 +57,8 @@ class SOSState {
       activeAlertId: activeAlertId ?? this.activeAlertId,
       activeCircleAlerts: activeCircleAlerts ?? this.activeCircleAlerts,
       sosStartTime: sosStartTime ?? this.sosStartTime,
-      activeDurationSeconds: activeDurationSeconds ?? this.activeDurationSeconds,
+      activeDurationSeconds:
+          activeDurationSeconds ?? this.activeDurationSeconds,
       handledAlertIds: handledAlertIds ?? this.handledAlertIds,
     );
   }
@@ -91,13 +92,18 @@ class SOSNotifier extends StateNotifier<SOSState> {
 
   void _subscribeToCircle(String circleId) {
     _alertsSub?.cancel();
+    _durationTimer?.cancel();
+    _stopReceiverSiren();
+    state = const SOSState();
     if (circleId.isEmpty) return;
 
     _alertsSub = _service.streamActiveSOSAlerts(circleId).listen((alerts) {
       final currentUid = _ref.read(appStateProvider).userId;
 
       // Filter alerts sent by other circle members
-      final otherAlerts = alerts.where((a) => a.senderId != currentUid).toList();
+      final otherAlerts = alerts
+          .where((a) => a.senderId != currentUid)
+          .toList();
 
       state = state.copyWith(activeCircleAlerts: otherAlerts);
 
@@ -138,13 +144,19 @@ class SOSNotifier extends StateNotifier<SOSState> {
     try {
       final hasVibrator = await Vibration.hasVibrator();
       if (hasVibrator == true) {
-        Vibration.vibrate(pattern: [0, 500, 200, 500], repeat: 0).catchError((_) {});
+        Vibration.vibrate(
+          pattern: [0, 500, 200, 500],
+          repeat: 0,
+        ).catchError((_) {});
       } else {
-        _receiverVibrationTimer = Timer.periodic(const Duration(milliseconds: 700), (_) {
-          try {
-            HapticFeedback.vibrate();
-          } catch (_) {}
-        });
+        _receiverVibrationTimer = Timer.periodic(
+          const Duration(milliseconds: 700),
+          (_) {
+            try {
+              HapticFeedback.vibrate();
+            } catch (_) {}
+          },
+        );
       }
     } catch (e) {
       debugPrint('[SOSNotifier] Error starting vibration: $e');
@@ -201,7 +213,9 @@ class SOSNotifier extends StateNotifier<SOSState> {
     // Start 1-second interval ticker for duration display
     _durationTimer?.cancel();
     _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      state = state.copyWith(activeDurationSeconds: state.activeDurationSeconds + 1);
+      state = state.copyWith(
+        activeDurationSeconds: state.activeDurationSeconds + 1,
+      );
     });
 
     final alertId = await _service.triggerSOS(
@@ -268,8 +282,12 @@ final sosProvider = StateNotifierProvider<SOSNotifier, SOSState>((ref) {
   return SOSNotifier(ref);
 });
 
-final circleSosHistoryProvider = StreamProvider.autoDispose<List<SOSAlert>>((ref) {
-  final circleId = ref.watch(appStateProvider).circleId;
+final circleSosHistoryProvider = StreamProvider.autoDispose<List<SOSAlert>>((
+  ref,
+) {
+  final circleId = ref.watch(
+    appStateProvider.select((state) => state.circleId),
+  );
   if (circleId.isEmpty) return Stream.value([]);
   return SOSService().streamCircleSOSHistory(circleId);
 });

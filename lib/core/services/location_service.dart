@@ -1,22 +1,12 @@
+import 'dart:async';
 import 'package:intl/intl.dart';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tracelet/tracelet.dart' as tl;
+import 'location_sync_service.dart';
 
-/// Step 6 — Tracelet integration.
-///
-/// Responsibilities in THIS step:
-///   • Initialise Tracelet with the exact config validated in the spike
-///   • Start / stop the foreground-service tracking
-///   • Write location fixes to a LOCAL debug log (SharedPreferences)
-///
-/// NOT in this step (Step 7):
-///   • No Firestore writes
-///   • No Riverpod provider / stream
-///   • No map pin updates
-///
-/// Config mirrors `tracelet_spike` exactly:
-///   desiredAccuracy: high, distanceFilter: 0, stopOnTerminate: false,
-///   startOnBoot: true, stopTimeout: 0, debug logging in debug builds.
+/// Owns native tracking lifecycle and forwards fixes to the shared sync service.
+/// Diagnostic fix logging is bounded and enabled only in debug builds.
 class LocationService {
   // ── Singleton ─────────────────────────────────────────────────────────────
   LocationService._();
@@ -31,7 +21,7 @@ class LocationService {
 
   // ── SharedPreferences key ──────────────────────────────────────────────────
   static const _logKey = 'fg_location_log';
-  static const _maxLogEntries = 10000;
+  static const _maxLogEntries = 200;
 
   // ── Initialise ─────────────────────────────────────────────────────────────
 
@@ -43,13 +33,12 @@ class LocationService {
     // Subscribe to foreground location events before calling ready().
     tl.Tracelet.onLocation((tl.Location loc) async {
       await appendDebugLog(loc, source: 'FOREGROUND');
+      await LocationSyncService.ingest(loc);
     });
 
     // Subscribe to motion-change events (stationary ↔ moving transitions).
     tl.Tracelet.onMotionChange((tl.Location loc) {
-      // Unused in Step 6 — extend in Step 7 to update a Riverpod provider.
-      // ignore: unused_local_variable
-      final _ = loc;
+      unawaited(LocationSyncService.ingest(loc));
     });
 
     await tl.Tracelet.ready(
@@ -94,7 +83,7 @@ class LocationService {
   }
 
   Future<void> stop() async {
-    if (!_isTracking) return;
+    // Native tracking may already be running after a process restart.
     await tl.Tracelet.stop();
     _isTracking = false;
   }
@@ -103,14 +92,14 @@ class LocationService {
 
   /// Subscribe to foreground location fixes.
   /// Callback fires on every fix while the app is in the foreground.
-  void onLocation(void Function(tl.Location) callback) {
-    tl.Tracelet.onLocation(callback);
-  }
+  StreamSubscription<tl.Location> onLocation(
+    void Function(tl.Location) callback,
+  ) => tl.Tracelet.onLocation(callback);
 
   /// Subscribe to moving ↔ stationary transitions.
-  void onMotionChange(void Function(tl.Location) callback) {
-    tl.Tracelet.onMotionChange(callback);
-  }
+  StreamSubscription<tl.Location> onMotionChange(
+    void Function(tl.Location) callback,
+  ) => tl.Tracelet.onMotionChange(callback);
 
   // ── Health check ──────────────────────────────────────────────────────────
 
@@ -133,13 +122,15 @@ class LocationService {
     tl.Location location, {
     String source = 'FOREGROUND',
   }) async {
+    if (!kDebugMode) return;
     final prefs = await SharedPreferences.getInstance();
     final stamp = DateFormat('yyyy-MM-dd HH:mm:ss').format(DateTime.now());
     final lat = location.coords.latitude.toStringAsFixed(6);
     final lng = location.coords.longitude.toStringAsFixed(6);
     final acc = location.coords.accuracy.toStringAsFixed(1);
     final spd = location.coords.speed.toStringAsFixed(1);
-    final entry = '$stamp | $source | lat=$lat lng=$lng acc=${acc}m spd=${spd}m/s';
+    final entry =
+        '$stamp | $source | lat=$lat lng=$lng acc=${acc}m spd=${spd}m/s';
 
     final log = prefs.getStringList(_logKey) ?? [];
     log.add(entry);

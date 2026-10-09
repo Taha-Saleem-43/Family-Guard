@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/app_state_provider.dart';
 import '../../../core/services/location_service.dart';
+import '../../../core/services/permission_service.dart';
 import '../presentation/widgets/bottom_nav.dart';
 import '../../map/presentation/map_screen.dart';
 import '../../history/presentation/history_screen.dart';
@@ -35,7 +36,10 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
     if (role != UserRole.child) return;
 
     try {
+      final permissions = await PermissionService().getPermissionSummary();
+      if (!mounted || !permissions.canOperate) return;
       await LocationService.instance.init();
+      if (!mounted || ref.read(appStateProvider).role != UserRole.child) return;
       await LocationService.instance.start();
     } catch (e) {
       // Non-fatal in Step 6 — failure is visible in the debug log.
