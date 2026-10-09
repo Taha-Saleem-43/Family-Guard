@@ -127,28 +127,30 @@ class LocationService {
       });
     }
 
+    final balanced = tl.Config.balanced();
     await tl.Tracelet.ready(
-      tl.Config.balanced().copyWith(
-        geo: const tl.GeoConfig(
-          desiredAccuracy: tl.DesiredAccuracy.high,
-          // 10-metre filter = ignore minor static GPS drift on-device.
-          distanceFilter: 10.0,
+      balanced.copyWith(
+        geo: balanced.geo.copyWith(
+          // Preserve adaptive sampling and avoid small stationary drift.
+          distanceFilter: 25.0,
         ),
-        app: const tl.AppConfig(
+        app: balanced.app.copyWith(
           // Keep tracking when user swipes app away or reboots device.
           stopOnTerminate: false,
           startOnBoot: true,
+          heartbeatInterval: 180,
         ),
-        motion: const tl.MotionConfig(
-          // 0 = no stationary timeout — Tracelet decides when to stop.
-          stopTimeout: 0,
-        ),
+        motion: tl.MotionConfig.fromMap({
+          ...balanced.motion.toMap(),
+          'stopTimeout': 2,
+          'stationaryPeriodicInterval': 180,
+        }),
         persistence: const tl.PersistenceConfig(
           maxDaysToPersist: 7,
           maxRecordsToPersist: 5000,
         ),
-        android: const tl.AndroidConfig(
-          foregroundService: tl.ForegroundServiceConfig(
+        android: balanced.android.copyWith(
+          foregroundService: const tl.ForegroundServiceConfig(
             notificationTitle: 'FamilyGuard',
             notificationText: 'Sharing your location with your Circle',
           ),
