@@ -60,6 +60,7 @@ dependencies:
 
   # State management
   flutter_riverpod: ^2.5.0
+  stream_transform: 2.1.1
 
   # Permissions
   permission_handler: ^11.3.0

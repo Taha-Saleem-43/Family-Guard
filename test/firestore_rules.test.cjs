@@ -12,7 +12,7 @@ before(async () => {
     for (const [uid, circleId, role] of [['parentA', 'a', 'parent'], ['childA', 'a', 'child'], ['siblingA', 'a', 'child'], ['parentB', 'b', 'parent']]) {
       await setDoc(doc(db, 'users', uid), { uid, circleId, role, displayName: uid });
     }
-    await setDoc(doc(db, 'circles/a'), { name: 'A', memberIds: ['parentA', 'childA'] });
+    await setDoc(doc(db, 'circles/a'), { name: 'A', memberIds: ['parentA', 'childA', 'siblingA'] });
     await setDoc(doc(db, 'circles/a/private/invites'), { parentInviteCode: 'secret' });
     await setDoc(doc(db, 'locationHistory/childA/points/p'), { latitude: 1, longitude: 2, circleId: 'a' });
     await setDoc(doc(db, 'sos_alerts/s'), { circleId: 'a', senderId: 'childA', status: 'active' });
@@ -27,11 +27,19 @@ test('stale profile circle links cannot restore removed-parent access', async ()
     });
   });
   const db = dbFor('removedParent');
+  await assertFails(getDoc(doc(dbFor('parentA'), 'users/removedParent')));
   await assertSucceeds(getDoc(doc(db, 'users/removedParent')));
   for (const path of ['circles/a', 'circles/a/private/invites', 'users/childA',
     'locationHistory/childA/points/p', 'sos_alerts/s']) {
     await assertFails(getDoc(doc(db, path)));
   }
+});
+test('parent roster queries must name actual members instead of all linked profiles', async () => {
+  const db = dbFor('parentA');
+  await assertFails(getDocs(query(collection(db, 'users'), where('circleId', '==', 'a'))));
+  const snapshot = await assertSucceeds(getDocs(query(collection(db, 'users'),
+    where('circleId', '==', 'a'), where(documentId(), 'in', ['parentA', 'childA', 'siblingA']))));
+  assert.equal(snapshot.size, 3);
 });
 test('place activity is private to parents and the recorded child', async () => {
   await env.withSecurityRulesDisabled(async (context) => {

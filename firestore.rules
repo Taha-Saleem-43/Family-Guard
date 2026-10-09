@@ -16,7 +16,9 @@ service cloud.firestore {
     }
     function parent(circleId) { return member(circleId) && me().role == 'parent'; }
     function sameCircleUser(uid) {
-      return member(get(/databases/$(database)/documents/users/$(uid)).data.circleId);
+      let circleId = get(/databases/$(database)/documents/users/$(uid)).data.circleId;
+      return member(circleId)
+        && uid in get(/databases/$(database)/documents/circles/$(circleId)).data.memberIds;
     }
     function validLocation(data) {
       return data.latitude is number && data.latitude >= -90 && data.latitude <= 90
@@ -36,7 +38,8 @@ service cloud.firestore {
         && (!changed.hasAny(['lastSeen']) || (data.lastSeen is string && data.lastSeen.size() <= 40));
     }
     match /users/{uid} {
-      allow read: if owner(uid) || parent(resource.data.circleId);
+      allow read: if owner(uid) || (parent(resource.data.circleId)
+        && uid in get(/databases/$(database)/documents/circles/$(resource.data.circleId)).data.memberIds);
       allow create: if owner(uid)
         && !exists(/databases/$(database)/documents/accountDeletions/$(uid))
         && request.resource.data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'circleId', 'createdAt'])

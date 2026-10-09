@@ -1,4 +1,6 @@
 import 'dart:math';
+import 'dart:async';
+import 'package:stream_transform/stream_transform.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -8,9 +10,12 @@ import 'package:flutter/material.dart';
 import '../models/location_history_point.dart';
 import '../models/location_history_page.dart';
 import '../models/member.dart';
+import '../models/circle_roster.dart';
 import '../models/movement_activity.dart';
 import 'member_profile_decoder.dart';
 import 'latest_value_queue.dart';
+
+typedef _ProfileDocuments = List<DocumentSnapshot<Map<String, dynamic>>>;
 
 typedef _LocationUpload = ({
   String uid,
@@ -322,11 +327,7 @@ class FirestoreLocationService {
     }
 
     final profiles = currentRole == UserRole.parent
-        ? _firestore
-              .collection('users')
-              .where('circleId', isEqualTo: circleId)
-              .snapshots()
-              .map((snapshot) => snapshot.docs)
+        ? _streamParentProfiles(circleId, currentUid)
         : _firestore
               .collection('users')
               .doc(currentUid)
@@ -349,6 +350,44 @@ class FirestoreLocationService {
           )
           .toList();
     });
+  }
+
+  Stream<_ProfileDocuments> _streamParentProfiles(String circleId, String uid) {
+    final db = _firestore!;
+    return db
+        .collection('circles')
+        .doc(circleId)
+        .snapshots()
+        .transform(
+          StreamTransformer<
+            DocumentSnapshot<Map<String, dynamic>>,
+            Stream<_ProfileDocuments>
+          >.fromHandlers(
+            handleData: (circle, sink) {
+              try {
+                final ids = CircleRoster.memberIds(circle.data(), uid);
+                sink.add(
+                  ids.isEmpty
+                      ? Stream.value(
+                          const <DocumentSnapshot<Map<String, dynamic>>>[],
+                        )
+                      : db
+                            .collection('users')
+                            .where('circleId', isEqualTo: circleId)
+                            .where(FieldPath.documentId, whereIn: ids)
+                            .snapshots()
+                            .map((snapshot) => snapshot.docs),
+                );
+              } catch (error, stack) {
+                sink.add(Stream.error(error, stack));
+              }
+            },
+            // Turn authority errors into replacement streams so the old query is cancelled.
+            handleError: (error, stack, sink) =>
+                sink.add(Stream.error(error, stack)),
+          ),
+        )
+        .switchLatest();
   }
 
   static double _calculateDistanceMeters(

@@ -1,5 +1,7 @@
 # Live account scope changes
 
+Parent member queries use the current circle's validated roster, with at most twenty document IDs. Roster changes and authority errors cancel the previous profile query. Rules require both the requesting member and any viewed peer profile/history to belong to the actual roster; stale profile circle links cannot restore access. Deploy matching clients before enabling these stricter query rules. Older broad `users where circleId` queries are intentionally rejected.
+
 While the main app is open, an owner-profile listener accepts confirmed server snapshots only. Changes to the account's role, circle or deletion state clear invite codes and private views immediately, pause tracking and invalidate earlier circle callbacks. Name-only updates retain the active tab. A changed sharing scope returns to consent/permission onboarding; completing it opens a fresh profile listener.
 
 The MaterialApp navigator is keyed by the active account/circle/role scope. Leaving that scope clears outstanding dialogs and routes, including private detail views. Onboarding keeps its own stable key during ordinary circle creation so the invite-code screen remains available. Existing authenticated accounts without a circle resume circle setup instead of being asked to register again.
