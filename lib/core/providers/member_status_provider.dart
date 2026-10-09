@@ -34,17 +34,8 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
     _listenToFirestoreCircle();
     _freshnessTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (!mounted) return;
-      final now = DateTime.now();
-      state = state
-          .map(
-            (member) => member.copyWith(
-              isStale:
-                  member.latitude == null ||
-                  member.longitude == null ||
-                  !MemberProfileDecoder.isFresh(member.lastSeen, now),
-            ),
-          )
-          .toList();
+      final updated = MemberProfileDecoder.ageMembers(state, DateTime.now());
+      if (!identical(updated, state)) state = updated;
     });
   }
 

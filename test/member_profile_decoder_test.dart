@@ -5,6 +5,52 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   final now = DateTime.utc(2026, 10, 9);
+  test('freshness checks preserve state unless a stale status changes', () {
+    final first = MemberProfileDecoder.decode(
+      'first',
+      {'latitude': 33, 'longitude': 73, 'lastSeen': now.toIso8601String()},
+      currentUid: 'first',
+      now: now,
+    );
+    final second = MemberProfileDecoder.decode(
+      'second',
+      {
+        'latitude': 34,
+        'longitude': 74,
+        'lastSeen': now.add(const Duration(minutes: 5)).toIso8601String(),
+      },
+      currentUid: 'first',
+      now: now.add(const Duration(minutes: 5)),
+    );
+    final members = [first, second];
+    expect(
+      identical(
+        MemberProfileDecoder.ageMembers(
+          members,
+          now.add(const Duration(minutes: 10)),
+        ),
+        members,
+      ),
+      true,
+    );
+    final aged = MemberProfileDecoder.ageMembers(
+      members,
+      now.add(const Duration(minutes: 16)),
+    );
+    expect(identical(aged, members), false);
+    expect(aged.first.isStale, true);
+    expect(identical(aged.last, second), true);
+    expect(
+      identical(
+        MemberProfileDecoder.ageMembers(
+          aged,
+          now.add(const Duration(minutes: 17)),
+        ),
+        aged,
+      ),
+      true,
+    );
+  });
   test(
     'malformed legacy member values remain readable without invented coordinates or battery',
     () {

@@ -5,6 +5,23 @@ import '../theme/app_colors.dart';
 
 /// Decodes legacy profiles defensively; database rules validate new writes.
 class MemberProfileDecoder {
+  /// Preserve list identity when no freshness changed, avoiding map rebuilds.
+  static List<Member> ageMembers(List<Member> members, DateTime now) {
+    List<Member>? updated;
+    for (var index = 0; index < members.length; index++) {
+      final member = members[index];
+      final stale =
+          member.latitude == null ||
+          member.longitude == null ||
+          !isFresh(member.lastSeen, now);
+      if (stale != member.isStale) {
+        updated ??= List.of(members);
+        updated[index] = member.copyWith(isStale: stale);
+      }
+    }
+    return updated ?? members;
+  }
+
   static bool isFresh(DateTime lastSeen, DateTime now) {
     final age = now.difference(lastSeen);
     return age >= const Duration(seconds: -30) &&

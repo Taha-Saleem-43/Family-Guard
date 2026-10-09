@@ -41,6 +41,8 @@ New personal Play accounts currently require at least 12 opted-in testers contin
 
 ## Verification
 
+Location refresh efficiency: the existing full 83-test suite passed after the optimization, followed by all 4 decoder regressions including the newly added unchanged-state/partial-aging test. App/test analysis and final test analysis are clean. Freshness checks retain list/member identity and publish only when a stale status changes, avoiding recurring map rebuilds.
+
 SOS dismissal reliability: all 83 Flutter tests pass and app/test analysis is clean. Writes are ordered across provider recreation and pending snapshots are readable without waiting for disk. Failed writes do not poison later saves. Retained IDs are bounded to 100 with active emergencies prioritized; sounded IDs are pruned to the active stream. Regressions cover delayed writes, concurrent recreation, caller mutation and disk failure recovery.
 
 History access boundaries: analysis of app/test source is clean; all 80 Flutter tests and 12 rules emulator tests pass, including owner legacy access, denial of former-circle history, constrained parent queries and rejection of forged recorded circles.
