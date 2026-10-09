@@ -34,6 +34,6 @@ New personal Play accounts currently require at least 12 opted-in testers contin
 
 ## Verification
 
-Local Flutter suite: 55 tests passed. Dart analysis: no issues. Firestore security emulator: 9 tests passed. Backend domain tests: 3 passed. Membership transaction integration verification is recorded separately after execution.
+Local Flutter suite: 55 tests passed. Dart analysis: no issues. Firestore security emulator: 9 tests passed. Backend domain tests: 3 passed. Membership transaction emulator integration: 6 passed, including concurrent creation, invite expiry, idempotent joining and rate limiting.
 
 These checks do not establish physical-device behavior, Play approval, deployed backend compatibility, or measured battery savings. GitHub Actions only runs remotely after the branch is pushed.
