@@ -39,7 +39,9 @@ class AuthService {
     );
     final user = credential.user!;
     try {
+      _requireCurrentUid(user.uid);
       await user.updateDisplayName(displayName.trim());
+      _requireCurrentUid(user.uid);
       final account = UserAccountModel(
         uid: user.uid,
         email: email.trim(),
@@ -48,9 +50,10 @@ class AuthService {
         createdAt: DateTime.now().toUtc(),
       );
       await _firestore.collection('users').doc(user.uid).set(account.toMap());
+      _requireCurrentUid(user.uid);
       return account;
     } catch (_) {
-      await user.delete();
+      if (_auth.currentUser?.uid == user.uid) await user.delete();
       rethrow;
     }
   }
@@ -59,10 +62,11 @@ class AuthService {
     required String email,
     required String password,
   }) async {
-    await _auth.signInWithEmailAndPassword(
+    final credential = await _auth.signInWithEmailAndPassword(
       email: email.trim(),
       password: password,
     );
+    _requireCurrentUid(credential.user!.uid);
     return loadCurrentAccount();
   }
 
@@ -74,6 +78,7 @@ class AuthService {
         .collection('users')
         .doc(user.uid)
         .get(const GetOptions(source: Source.server));
+    _requireCurrentUid(user.uid);
     if (!doc.exists || doc.data() == null) {
       throw Exception(
         'Account profile is unavailable. Please contact support.',
@@ -91,14 +96,18 @@ class AuthService {
       email: account.email,
       userName: account.displayName,
     );
+    _requireCurrentUid(user.uid);
     return account;
   }
 
   Future<CircleModel> createCircle({required String circleName}) async {
-    if (_auth.currentUser == null) throw Exception('Please sign in.');
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) throw Exception('Please sign in.');
     final result = await _functions.httpsCallable('createCircle').call({
+      'expectedUid': uid,
       'circleName': circleName.trim(),
     });
+    _requireCurrentUid(uid);
     final data = Map<String, dynamic>.from(result.data as Map);
     return CircleModel.fromMap(data, data['id'] as String);
   }
@@ -106,19 +115,25 @@ class AuthService {
   Future<UserAccountModel> joinCircleByCode({
     required String inviteCode,
   }) async {
-    if (_auth.currentUser == null) throw Exception('Please sign in.');
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) throw Exception('Please sign in.');
     if (inviteCode.trim().isEmpty) {
       throw Exception('Enter the complete invite code.');
     }
     await _functions.httpsCallable('joinCircle').call({
+      'expectedUid': uid,
       'inviteCode': inviteCode.trim().toUpperCase(),
     });
+    _requireCurrentUid(uid);
     return loadCurrentAccount();
   }
 
   Future<void> signOut() async {
-    await LocationService.instance.stop();
     final uid = _auth.currentUser?.uid;
+    await LocationService.instance.stop();
+    if (_auth.currentUser?.uid != uid) {
+      throw StateError('Your account changed.');
+    }
     await _auth.signOut();
     if (uid != null) await UserSessionService.clearUserSession(uid);
     await LocationService.clearDebugLog();
@@ -187,10 +202,13 @@ class AuthService {
   }
 
   Future<DateTime> rotateCircleInvites(String circleId) async {
-    if (_auth.currentUser == null) throw Exception('Please sign in.');
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) throw Exception('Please sign in.');
     final result = await _functions.httpsCallable('rotateCircleInvites').call({
+      'expectedUid': uid,
       'circleId': circleId,
     });
+    _requireCurrentUid(uid);
     final data = Map<String, dynamic>.from(result.data as Map);
     return DateTime.parse(data['expiresAt'] as String);
   }

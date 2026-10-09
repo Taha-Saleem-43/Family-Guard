@@ -5,6 +5,7 @@ const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
 const { onCall, HttpsError } = require('firebase-functions/v2/https');
 const { normalizeInvite, newInvite, inviteKey, circleName } = require('./domain');
+const { authenticated } = require('./auth');
 
 initializeApp();
 const db = getFirestore();
@@ -22,11 +23,6 @@ exports.processAccountDeletion = onDocumentCreated({ document: 'accountDeletions
 }, (event) => accounts.process(event.params.uid));
 exports.retryAccountDeletions = onSchedule({ schedule: 'every 60 minutes', region: options.region,
   timeoutSeconds: 540, maxInstances: 1 }, () => accounts.retryPending());
-
-function authenticated(request) {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Please sign in first.');
-  return request.auth.uid;
-}
 
 function validate(fn, value) {
   try { return fn(value); } catch (error) {

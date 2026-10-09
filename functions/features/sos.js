@@ -1,6 +1,7 @@
 const { createHash } = require('node:crypto');
 const { Timestamp } = require('firebase-admin/firestore');
 const { HttpsError } = require('firebase-functions/v2/https');
+const { authenticated } = require('../auth');
 
 function requestId(value) {
   if (typeof value !== 'string' || !/^[a-f0-9]{32}$/.test(value)) {
@@ -18,11 +19,6 @@ function coordinates(data) {
     throw new HttpsError('invalid-argument', 'Emergency coordinates are invalid.');
   }
   return { latitude, longitude };
-}
-
-function authenticated(request) {
-  if (!request.auth) throw new HttpsError('unauthenticated', 'Please sign in first.');
-  return request.auth.uid;
 }
 
 function summary(snapshot) {

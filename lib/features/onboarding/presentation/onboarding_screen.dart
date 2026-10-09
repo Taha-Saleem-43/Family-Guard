@@ -128,8 +128,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
     final authService = ref.read(authServiceProvider);
     try {
+      final uid = authService.currentUser?.uid;
+      if (uid == null) throw Exception('Please sign in.');
       final circle = await authService.createCircle(circleName: circleName);
-      final uid = authService.currentUser?.uid ?? 'user_${DateTime.now().millisecondsSinceEpoch}';
       ref.read(appStateProvider.notifier).setUserSession(
         userId: uid,
         circleId: circle.id,

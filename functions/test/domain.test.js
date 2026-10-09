@@ -1,6 +1,14 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { newInvite, normalizeInvite, inviteKey, circleName } = require('../domain');
+const { authenticated } = require('../auth');
+
+test('account fence rejects changed SDK identity before any mutation', () => {
+  assert.throws(() => authenticated({ auth: null }), { code: 'unauthenticated' });
+  assert.throws(() => authenticated({ auth: { uid: 'new' }, data: { expectedUid: 'old' } }), { code: 'failed-precondition' });
+  assert.equal(authenticated({ auth: { uid: 'same' }, data: { expectedUid: 'same' } }), 'same');
+  assert.equal(authenticated({ auth: { uid: 'legacy' }, data: {} }), 'legacy');
+});
 
 test('invites normalize and have independent cryptographic identifiers', () => {
   const a = newInvite('child');

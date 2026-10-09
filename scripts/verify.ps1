@@ -15,12 +15,12 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Flutter tests failed' }
   npm.cmd ci --ignore-scripts
   if ($LASTEXITCODE -ne 0) { throw 'Node dependency resolution failed' }
+  npm.cmd ci --prefix functions --ignore-scripts
+  if ($LASTEXITCODE -ne 0) { throw 'Functions dependency resolution failed' }
   npm.cmd run test:backend
   if ($LASTEXITCODE -ne 0) { throw 'Backend tests failed' }
   npm.cmd run test:rules
   if ($LASTEXITCODE -ne 0) { throw 'Security tests failed' }
-  npm.cmd ci --prefix functions --ignore-scripts
-  if ($LASTEXITCODE -ne 0) { throw 'Functions dependency resolution failed' }
   npm.cmd run test:membership
   if ($LASTEXITCODE -ne 0) { throw 'Membership integration tests failed' }
   npm.cmd run test:sos

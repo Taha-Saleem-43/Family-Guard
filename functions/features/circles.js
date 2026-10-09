@@ -1,12 +1,12 @@
 const { Timestamp } = require('firebase-admin/firestore');
 const { HttpsError } = require('firebase-functions/v2/https');
 const { newInvite, inviteKey } = require('../domain');
+const { authenticated } = require('../auth');
 
 function createCircleManagementHandlers(db) {
   return {
     async rotateInvites(request) {
-      const uid = request.auth?.uid;
-      if (!uid) throw new HttpsError('unauthenticated', 'Please sign in first.');
+      const uid = authenticated(request);
       const circleId = request.data?.circleId;
       if (typeof circleId !== 'string' || !circleId || circleId.includes('/')) {
         throw new HttpsError('invalid-argument', 'Select your family circle first.');

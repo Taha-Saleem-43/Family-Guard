@@ -50,6 +50,7 @@ class SOSService {
       for (var attempt = 0; attempt < 2; attempt++) {
         final requestId = await _requests.getOrCreate(userId, circleId);
         final result = await _call('triggerSos', {
+          'expectedUid': userId,
           'requestId': requestId,
           'circleId': circleId,
           'latitude': latitude,
@@ -85,7 +86,10 @@ class SOSService {
       return false;
     }
     try {
-      final result = await _call('resolveSos', {'alertId': alertId});
+      final result = await _call('resolveSos', {
+        'alertId': alertId,
+        'expectedUid': userId,
+      });
       if (result['resolved'] != true || result['alertId'] != alertId) {
         return false;
       }

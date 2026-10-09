@@ -16,6 +16,12 @@ before(async () => {
   }
 });
 after(async () => { await Promise.all(getApps().map(deleteApp)); });
+test('membership and emergency endpoints reject a switched request identity', async () => {
+  for (const name of ['createCircle', 'joinCircle', 'rotateCircleInvites', 'triggerSos', 'resolveSos']) {
+    await assert.rejects(handlers[name].run(request('creator', { expectedUid: 'other' })), { code: 'failed-precondition' });
+  }
+  assert.equal((await db.doc('users/creator').get()).data().circleId, null);
+});
 test('unauthenticated creation and joins are rejected', async () => {
   await assert.rejects(handlers.createCircle.run(request(null, { circleName: 'Family' })), { code: 'unauthenticated' });
   await assert.rejects(handlers.joinCircle.run(request(null, { inviteCode: 'FAMILY-0000000000000000' })), { code: 'unauthenticated' });
