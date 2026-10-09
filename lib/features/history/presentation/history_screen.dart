@@ -18,6 +18,12 @@ class HistoryScreen extends ConsumerStatefulWidget {
 class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   final MapController _mapController = MapController();
 
+  @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
+  }
+
   Widget _scrollableStatus({required Widget child}) => LayoutBuilder(
     builder: (context, constraints) => ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -225,7 +231,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             ),
                             const SizedBox(width: 6),
                             Text(
-                              '${timelineItems.length} Event(s)',
+                              history.isLoading ? 'Loading history…' : history.hasError
+                                  ? 'History unavailable' : '${timelineItems.length} Event(s)',
                               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                             ),
                           ],

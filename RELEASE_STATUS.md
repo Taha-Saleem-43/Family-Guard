@@ -9,6 +9,7 @@ Implemented foundations:
 - Firebase Auth-backed restoration, logout stops native tracking, display-only session preferences and removal of previously cached JWTs.
 - Shared foreground/headless upload entry point, fix validation, serialized atomic live/history writes and removal of upload-time client cleanup.
 - Timestamp history expiry fields and TTL configuration; honest empty history and real permission queries.
+- History query failures propagate to a retryable error panel; loading and empty data have separate states. Refresh waits for the query and works with short or empty lists. History member selection resets across account/circle changes, and children query only their own history. History map controllers are disposed with their screen.
 - Regression tests and GitHub Actions for app, backend and rules verification.
 - Android targets API 36 with explicit build tools and SDK download controls. Release builds no longer use debug signing; a validation task requires an owner-approved application ID and local upload-keystore configuration. Native debug compilation and release-guard checks were added to branch CI; native verification is pending its first run.
 - SOS creation/resolution use authenticated, App Check protected backend transactions. Sender identity and names come from the server profile. Concurrent sends create one active alert per user; persistent request IDs make ambiguous timeout retries safe across client recreation. Resolved request IDs cannot reopen an old alert, and resolving an old alert cannot clear a newer one. Client writes to SOS records and profile flags are denied.
@@ -36,6 +37,8 @@ History readers now query Firestore timestamps. Old string timestamps/expiry fie
 New personal Play accounts currently require at least 12 opted-in testers continuously for 14 days before applying for production access. See [Google's testing requirements](https://support.google.com/googleplay/android-developer/answer/14151465). A closed-test build is the next-week target; public availability depends on account eligibility and review.
 
 ## Verification
+
+History reliability: full 71-test Flutter suite passed; final UI changes are checked with the 11 history regressions. Final history analysis reported no issues. Latest remote Flutter and Firebase jobs passed on the Android feature branch; native compilation is still being verified.
 
 Local Flutter suite: 55 tests passed. Dart analysis: no issues. Firestore security emulator: 9 tests passed. Backend domain tests: 3 passed. Membership transaction emulator integration: 6 passed, including concurrent creation, invite expiry, idempotent joining and rate limiting.
 
