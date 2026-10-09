@@ -9,6 +9,7 @@ import '../../../core/providers/app_state_provider.dart';
 import '../../../core/providers/member_status_provider.dart';
 import '../models/sos_alert.dart';
 import '../services/sos_service.dart';
+import '../services/sos_dismissal_store.dart';
 
 class SOSState {
   static const _unchanged = Object();
@@ -87,13 +88,16 @@ class SOSNotifier extends StateNotifier<SOSState> {
   int _alarmGeneration = 0;
   final Set<String> _soundedAlertIds = {};
   final Future<void> Function()? _receiverAlarm;
+  final SOSDismissalStore _dismissals;
 
   SOSNotifier(
     this._ref, {
     SOSService? service,
     Future<void> Function()? receiverAlarm,
+    SOSDismissalStore? dismissals,
   }) : _service = service ?? SOSService(),
        _receiverAlarm = receiverAlarm,
+       _dismissals = dismissals ?? PreferencesSOSDismissalStore(),
        super(const SOSState()) {
     _initSubscription();
   }
@@ -119,12 +123,23 @@ class SOSNotifier extends StateNotifier<SOSState> {
     _stopReceiverSiren();
     state = const SOSState();
     if (circleId.isEmpty) return;
+    final uid = _ref.read(appStateProvider).userId;
+    final dismissed = _dismissals.load(uid, circleId).catchError((
+      Object error,
+    ) {
+      debugPrint('[SOSNotifier] Dismissal restoration failed: $error');
+      return <String>{};
+    });
 
     _alertsSub = _service
         .streamActiveSOSAlerts(circleId)
         .listen(
-          (alerts) {
+          (alerts) async {
+            final savedDismissals = await dismissed;
             if (!mounted || generation != _sessionGeneration) return;
+            state = state.copyWith(
+              handledAlertIds: {...savedDismissals, ...state.handledAlertIds},
+            );
             final currentUid = _ref.read(appStateProvider).userId;
             final selfAlerts =
                 alerts
@@ -292,8 +307,19 @@ class SOSNotifier extends StateNotifier<SOSState> {
       }
     }
 
-    final lat = latitude ?? memberLoc?.latitude;
-    final lng = longitude ?? memberLoc?.longitude;
+    // Never label an old cached position as the emergency's current position.
+    final locationAge = memberLoc == null
+        ? null
+        : DateTime.now().difference(memberLoc.lastSeen);
+    final fresh =
+        memberLoc != null &&
+        !memberLoc.isStale &&
+        locationAge != null &&
+        locationAge.inSeconds >= -30 &&
+        locationAge.inSeconds <= 120;
+    final explicit = latitude != null || longitude != null;
+    final lat = explicit ? latitude : (fresh ? memberLoc.latitude : null);
+    final lng = explicit ? longitude : (fresh ? memberLoc.longitude : null);
 
     String? alertId;
     try {
@@ -381,6 +407,14 @@ class SOSNotifier extends StateNotifier<SOSState> {
     _stopReceiverSiren();
     final updated = Set<String>.from(state.handledAlertIds)..add(alertId);
     state = state.copyWith(handledAlertIds: updated);
+    final session = _ref.read(appStateProvider);
+    if (session.userId.isNotEmpty && session.circleId.isNotEmpty) {
+      _dismissals.save(session.userId, session.circleId, updated).catchError((
+        Object error,
+      ) {
+        debugPrint('[SOSNotifier] Dismissal persistence failed: $error');
+      });
+    }
   }
 
   @override

@@ -50,7 +50,9 @@ test('invite secrets are parent-only and backend-owned', async () => {
 test('SOS cannot be spoofed or resolved by another member', async () => {
   await assertFails(setDoc(doc(dbFor('parentB'), 'sos_alerts/fake'), { circleId: 'a', senderId: 'childA', status: 'active' }));
   await assertFails(updateDoc(doc(dbFor('parentA'), 'sos_alerts/s'), { status: 'resolved', resolvedBy: 'parentA' }));
-  await assertSucceeds(updateDoc(doc(dbFor('childA'), 'sos_alerts/s'), { status: 'resolved', resolvedBy: 'childA', durationSeconds: 1, resolvedAt: 'now' }));
+  await assertFails(updateDoc(doc(dbFor('childA'), 'sos_alerts/s'), { status: 'resolved', resolvedBy: 'childA', durationSeconds: 1, resolvedAt: 'now' }));
+  await assertFails(setDoc(doc(dbFor('childA'), 'sos_alerts/own'), { circleId: 'a', senderId: 'childA', status: 'active' }));
+  await assertFails(updateDoc(doc(dbFor('childA'), 'users/childA'), { isSosActive: false, activeSosId: null }));
 });
 test('history requires timestamp TTL and valid coordinates', async () => {
   const point = { latitude: 1, longitude: 2, timestamp: Timestamp.now(), expireAt: Timestamp.now() };

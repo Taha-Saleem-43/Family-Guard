@@ -2,10 +2,12 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:family_guard/core/providers/app_state_provider.dart';
 import 'package:family_guard/features/sos/models/sos_alert.dart';
 import 'package:family_guard/features/sos/providers/sos_provider.dart';
 import 'package:family_guard/features/sos/services/sos_service.dart';
+import 'package:family_guard/features/sos/services/sos_dismissal_store.dart';
 import 'package:family_guard/features/sos/presentation/widgets/emergency_host.dart';
 
 class StreamSOSService extends SOSService {
@@ -40,6 +42,60 @@ Future<void> flush() => Future<void>.delayed(Duration.zero);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test(
+    'dismissed receiver alert stays silent after provider recreation',
+    () async {
+      final service = StreamSOSService();
+      var sounds = 0;
+      ProviderContainer session() {
+        final container = ProviderContainer(
+          overrides: [
+            sosProvider.overrideWith(
+              (ref) => SOSNotifier(
+                ref,
+                service: service,
+                receiverAlarm: () async {
+                  sounds++;
+                },
+              ),
+            ),
+          ],
+        );
+        final app = container.read(appStateProvider.notifier);
+        app.setUserId('self');
+        app.setCircleId('circle');
+        container.read(sosProvider);
+        return container;
+      }
+
+      final first = session();
+      service.alerts.add([alert('persisted', 'parent')]);
+      await flush();
+      expect(sounds, 1);
+      first.read(sosProvider.notifier).dismissReceiverAlert('persisted');
+      await flush();
+      expect(
+        await PreferencesSOSDismissalStore().load('self', 'circle'),
+        contains('persisted'),
+      );
+      first.dispose();
+      final second = session();
+      addTearDown(() async {
+        second.dispose();
+        await service.alerts.close();
+      });
+      service.alerts.add([alert('persisted', 'parent')]);
+      await flush();
+      expect(second.read(sosProvider).unhandledCircleEmergency, isNull);
+      expect(sounds, 1);
+      expect(
+        await PreferencesSOSDismissalStore().load('other', 'circle'),
+        isEmpty,
+      );
+    },
+  );
 
   test(
     'late send completion cannot restore an emergency after account switch',

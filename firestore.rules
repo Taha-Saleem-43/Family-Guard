@@ -25,7 +25,7 @@ service cloud.firestore {
       allow update: if owner(uid)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'displayName', 'latitude', 'longitude', 'speedMph', 'movementActivity',
-          'batteryLevel', 'isCharging', 'lastSeen', 'isSosActive', 'activeSosId', 'lastSosAt'
+          'batteryLevel', 'isCharging', 'lastSeen'
         ])
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['latitude', 'longitude'])
           || (member(resource.data.circleId) && validLocation(request.resource.data)));
@@ -54,12 +54,7 @@ service cloud.firestore {
     }
     match /sos_alerts/{alertId} {
       allow read: if member(resource.data.circleId);
-      allow create: if member(request.resource.data.circleId) && request.resource.data.senderId == request.auth.uid
-        && request.resource.data.status == 'active';
-      allow update: if member(resource.data.circleId) && resource.data.senderId == request.auth.uid
-        && resource.data.status == 'active' && request.resource.data.status == 'resolved'
-        && request.resource.data.resolvedBy == request.auth.uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'resolvedAt', 'resolvedBy', 'durationSeconds']);
+      // Authenticated callables own sender identity, idempotency and atomic profile state.
     }
     match /placeEvents/{eventId} { allow read: if member(resource.data.circleId); }
     match /sosEvents/{eventId} { allow read: if member(resource.data.circleId); }

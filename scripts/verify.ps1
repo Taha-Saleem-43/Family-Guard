@@ -23,6 +23,8 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Functions dependency resolution failed' }
   npm.cmd run test:membership
   if ($LASTEXITCODE -ne 0) { throw 'Membership integration tests failed' }
+  npm.cmd run test:sos
+  if ($LASTEXITCODE -ne 0) { throw 'SOS integration tests failed' }
 } finally {
   Pop-Location
 }
