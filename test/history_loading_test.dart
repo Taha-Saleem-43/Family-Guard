@@ -13,13 +13,16 @@ class ControlledHistoryService extends FirestoreLocationService {
   int calls = 0;
   bool failFirst = false;
   String? queriedUid;
+  String? queriedCircleId;
   @override
   Future<List<LocationHistoryPoint>> fetchLocationHistory({
     required String uid,
+    String? circleId,
     required DateTime startDate,
     required DateTime endDate,
   }) async {
     queriedUid = uid;
+    queriedCircleId = circleId;
     calls++;
     if (failFirst && calls == 1) throw StateError('Network unavailable');
     return pending.future;
@@ -53,6 +56,29 @@ void main() {
     expect(service.queriedUid, 'child');
   });
 
+  test(
+    'parent history requests retain recorded-circle boundary while own history stays accessible',
+    () async {
+      final service = ControlledHistoryService()..pending.complete([]);
+      final container = ProviderContainer(
+        overrides: [
+          firestoreLocationServiceProvider.overrideWithValue(service),
+        ],
+      );
+      addTearDown(container.dispose);
+      final app = container.read(appStateProvider.notifier);
+      app.setUserId('parent');
+      app.setCircleId('current');
+      app.setRole(UserRole.parent);
+      container.read(selectedHistoryMemberIdProvider.notifier).state = 'child';
+      await container.read(rawLocationHistoryProvider.future);
+      expect(service.queriedUid, 'child');
+      expect(service.queriedCircleId, 'current');
+      container.read(selectedHistoryMemberIdProvider.notifier).state = 'parent';
+      await container.read(rawLocationHistoryProvider.future);
+      expect(service.queriedCircleId, isNull);
+    },
+  );
   testWidgets('loading history does not claim there are no recorded points', (
     tester,
   ) async {

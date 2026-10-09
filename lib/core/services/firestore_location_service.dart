@@ -13,6 +13,8 @@ class FirestoreLocationService {
   Future<void> _pendingUpload = Future.value();
   DateTime? _lastUploadTime;
   String? _lastUploadedUid;
+  String? _circleLookupUid;
+  String? _uploadCircleId;
   double? _lastUploadedLat;
   double? _lastUploadedLng;
   MovementActivity? _lastUploadedActivity;
@@ -127,6 +129,17 @@ class FirestoreLocationService {
 
     try {
       if (_firestore != null) {
+        // Resolve once per account/process. Rules check membership again on every write.
+        if (_circleLookupUid != uid || _uploadCircleId == null) {
+          final profile = await _firestore
+              .collection('users')
+              .doc(uid)
+              .get(const GetOptions(source: Source.server));
+          final circle = profile.data()?['circleId'];
+          if (circle is! String || circle.isEmpty) return;
+          _circleLookupUid = uid;
+          _uploadCircleId = circle;
+        }
         final expireAt = now.add(const Duration(days: 30));
 
         final batch = _firestore.batch();
@@ -157,7 +170,7 @@ class FirestoreLocationService {
               .doc(uid)
               .collection('points')
               .doc(historyPoint.id),
-          historyPoint.toMap(),
+          {...historyPoint.toMap(), 'circleId': _uploadCircleId},
         );
         await batch.commit();
       }
@@ -170,6 +183,10 @@ class FirestoreLocationService {
       _lastUploadedBattery = batteryLevel;
       _lastUploadedCharging = isCharging;
     } catch (e) {
+      if (e is FirebaseException && e.code == 'permission-denied') {
+        _circleLookupUid = null;
+        _uploadCircleId = null;
+      }
       debugPrint('[FirestoreLocationService] Error updating location: $e');
     }
   }
@@ -177,6 +194,7 @@ class FirestoreLocationService {
   /// Fetches location history points for a user within a specified date range
   Future<List<LocationHistoryPoint>> fetchLocationHistory({
     required String uid,
+    String? circleId,
     required DateTime startDate,
     required DateTime endDate,
   }) async {
@@ -187,10 +205,15 @@ class FirestoreLocationService {
       final startIso = Timestamp.fromDate(startDate.toUtc());
       final endIso = Timestamp.fromDate(endDate.toUtc());
 
-      final snapshot = await firestore
+      Query<Map<String, dynamic>> query = firestore
           .collection('locationHistory')
           .doc(uid)
-          .collection('points')
+          .collection('points');
+      if (circleId != null) {
+        if (circleId.isEmpty) return [];
+        query = query.where('circleId', isEqualTo: circleId);
+      }
+      final snapshot = await query
           .where('timestamp', isGreaterThanOrEqualTo: startIso)
           .where('timestamp', isLessThanOrEqualTo: endIso)
           .orderBy('timestamp', descending: true)

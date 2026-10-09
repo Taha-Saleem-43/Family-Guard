@@ -53,8 +53,9 @@ service cloud.firestore {
       allow create, update: if owner(uid) && member(me().circleId) && validLocation(request.resource.data);
     }
     match /locationHistory/{uid}/points/{pointId} {
-      allow read: if owner(uid) || (sameCircleUser(uid) && me().role == 'parent');
+      allow read: if owner(uid) || (sameCircleUser(uid) && parent(resource.data.circleId));
       allow create: if owner(uid) && member(me().circleId) && validLocation(request.resource.data)
+        && request.resource.data.circleId == me().circleId
         && request.resource.data.timestamp is timestamp && request.resource.data.expireAt is timestamp;
     }
     match /places/{placeId} {

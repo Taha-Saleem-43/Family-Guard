@@ -12,6 +12,7 @@ Implemented foundations:
 - Timestamp history expiry fields and TTL configuration; honest empty history and real permission queries.
 - History query failures propagate to a retryable error panel; loading and empty data have separate states. Refresh waits for the query and works with short or empty lists. History member selection resets across account/circle changes, and children query only their own history. History map controllers are disposed with their screen.
 - Location-bearing profiles are readable only by their owner or a parent in the same circle. Child subscriptions read one profile; parent subscriptions retain the family roster. Role changes restart subscriptions and stale callbacks are rejected.
+- History points carry the recorded circle. Parent history queries filter by that circle, and rules deny former-circle or untagged history to other users. Owners retain access to their own legacy history. Uploads resolve membership from the server once per account/process and re-resolve after permission rejection.
 - Regression tests and GitHub Actions for app, backend and rules verification.
 - Android targets API 36 with explicit build tools and SDK download controls. Release builds no longer use debug signing; a validation task requires an owner-approved application ID and local upload-keystore configuration. Native debug compilation and release-guard checks were added to branch CI; branch CI has passed native debug compilation and release-guard verification.
 - SOS creation/resolution use authenticated, App Check protected backend transactions. Sender identity and names come from the server profile. Concurrent sends create one active alert per user; persistent request IDs make ambiguous timeout retries safe across client recreation. Resolved request IDs cannot reopen an old alert, and resolving an old alert cannot clear a newer one. Client writes to SOS records and profile flags are denied.
@@ -23,7 +24,7 @@ The new client requires `createCircle`, `joinCircle`, `triggerSos`, `resolveSos`
 
 Existing circle invite codes are not automatically migrated. Existing roles and memberships were writable under the old rules and require an owner-reviewed migration before they can be trusted. Move legacy invite secrets out of public circle documents and issue new private invite records. Do not deploy this ruleset over existing user data without checking this migration.
 
-History readers now query Firestore timestamps. Old string timestamps/expiry fields must be migrated with a backup and a dry run, or explicitly archived as pre-release data after owner approval. TTL must be enabled for `points.expireAt`, `inviteAttempts.expireAt`, `circleInvites.expiresAt` and `sos_alerts.expireAt` (set only after resolution; active emergencies do not expire silently); it is asynchronous and has billing implications. Permanent user profiles have no TTL.
+History readers now query Firestore timestamps and parents filter by the recorded circle. Deploy the points circleId/timestamp composite index with the client and rules. Legacy points without circle provenance remain owner-only; only backfill a circle when its original provenance is verified, never infer it from current membership. Old string timestamps/expiry fields must be migrated with a backup and a dry run, or explicitly archived as pre-release data after owner approval. TTL must be enabled for `points.expireAt`, `inviteAttempts.expireAt`, `circleInvites.expiresAt` and `sos_alerts.expireAt` (set only after resolution; active emergencies do not expire silently); it is asynchronous and has billing implications. Permanent user profiles have no TTL.
 
 ## Remaining release gates
 
@@ -39,6 +40,8 @@ History readers now query Firestore timestamps. Old string timestamps/expiry fie
 New personal Play accounts currently require at least 12 opted-in testers continuously for 14 days before applying for production access. See [Google's testing requirements](https://support.google.com/googleplay/android-developer/answer/14151465). A closed-test build is the next-week target; public availability depends on account eligibility and review.
 
 ## Verification
+
+History access boundaries: analysis of app/test source is clean; all 80 Flutter tests and 12 rules emulator tests pass, including owner legacy access, denial of former-circle history, constrained parent queries and rejection of forged recorded circles.
 
 Live-member reliability: all 79 Flutter tests pass and analysis of all app/test source reports no issues. Legacy malformed member values cannot crash roster decoding; invalid/incomplete coordinates are omitted, missing battery is displayed as Unknown, and future-clock locations are stale. A local minute timer ages freshness without database polling. All 11 rules emulator tests pass; the native -1 unknown battery value is accepted so missing battery cannot reject a valid location update. Circle management, data access hardening and profile validation each passed all three remote CI jobs (Flutter, Firebase and Android).
 

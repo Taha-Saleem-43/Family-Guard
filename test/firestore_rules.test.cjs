@@ -13,7 +13,7 @@ before(async () => {
     }
     await setDoc(doc(db, 'circles/a'), { name: 'A', memberIds: ['parentA', 'childA'] });
     await setDoc(doc(db, 'circles/a/private/invites'), { parentInviteCode: 'secret' });
-    await setDoc(doc(db, 'locationHistory/childA/points/p'), { latitude: 1, longitude: 2 });
+    await setDoc(doc(db, 'locationHistory/childA/points/p'), { latitude: 1, longitude: 2, circleId: 'a' });
     await setDoc(doc(db, 'sos_alerts/s'), { circleId: 'a', senderId: 'childA', status: 'active' });
   });
 });
@@ -55,7 +55,7 @@ test('SOS cannot be spoofed or resolved by another member', async () => {
   await assertFails(updateDoc(doc(dbFor('childA'), 'users/childA'), { isSosActive: false, activeSosId: null }));
 });
 test('history requires timestamp TTL and valid coordinates', async () => {
-  const point = { latitude: 1, longitude: 2, timestamp: Timestamp.now(), expireAt: Timestamp.now() };
+  const point = { circleId: 'a', latitude: 1, longitude: 2, timestamp: Timestamp.now(), expireAt: Timestamp.now() };
   await assertSucceeds(setDoc(doc(dbFor('childA'), 'locationHistory/childA/points/valid'), point));
   await assertFails(setDoc(doc(dbFor('childA'), 'locationHistory/childA/points/invalid'), { ...point, latitude: 91 }));
   await assertFails(setDoc(doc(dbFor('childA'), 'locationHistory/childA/points/string'), { ...point, expireAt: 'tomorrow' }));
@@ -87,4 +87,22 @@ test('profile updates reject malformed display and tracking fields', async () =>
   await assertSucceeds(updateDoc(profile, { latitude: 1, longitude: 2 }));
   // Native battery APIs use -1 when the reading is unavailable. Do not reject the location batch.
   await assertSucceeds(updateDoc(profile, { batteryLevel: -1, latitude: 2, longitude: 3 }));
+});
+
+test('parents cannot read a member history recorded in another circle or without provenance', async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    for (const [id, data] of [['previous', {circleId: 'former'}], ['legacy', {}]]) {
+      await setDoc(doc(context.firestore(), `locationHistory/childA/points/${id}`), {
+        latitude: 1, longitude: 2, timestamp: Timestamp.now(), ...data,
+      });
+    }
+  });
+  for (const id of ['previous', 'legacy']) {
+    await assertFails(getDoc(doc(dbFor('parentA'), `locationHistory/childA/points/${id}`)));
+    await assertSucceeds(getDoc(doc(dbFor('childA'), `locationHistory/childA/points/${id}`)));
+  }
+  await assertSucceeds(getDocs(query(collection(dbFor('parentA'), 'locationHistory/childA/points'), where('circleId', '==', 'a'))));
+  await assertFails(getDocs(collection(dbFor('parentA'), 'locationHistory/childA/points')));
+  const point = {circleId: 'former', latitude: 1, longitude: 2, timestamp: Timestamp.now(), expireAt: Timestamp.now()};
+  await assertFails(setDoc(doc(dbFor('childA'), 'locationHistory/childA/points/forged-circle'), point));
 });

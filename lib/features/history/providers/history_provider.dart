@@ -36,7 +36,9 @@ final rawLocationHistoryProvider = FutureProvider<List<LocationHistoryPoint>>((
   ref,
 ) async {
   final uid = ref.watch(appStateProvider.select((state) => state.userId));
-  ref.watch(appStateProvider.select((state) => state.circleId));
+  final circleId = ref.watch(
+    appStateProvider.select((state) => state.circleId),
+  );
   final role = ref.watch(appStateProvider.select((state) => state.role));
   final selection = ref.watch(selectedHistoryMemberIdProvider);
   final selectedMemberId = role == UserRole.parent ? selection ?? uid : uid;
@@ -64,6 +66,7 @@ final rawLocationHistoryProvider = FutureProvider<List<LocationHistoryPoint>>((
 
   final remotePoints = await service.fetchLocationHistory(
     uid: selectedMemberId,
+    circleId: selectedMemberId == uid ? null : circleId,
     startDate: startDate,
     endDate: now,
   );
