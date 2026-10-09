@@ -127,4 +127,27 @@ void main() {
       );
     },
   );
+  test(
+    'a newer sign-in invalidates even an enabled session left by failed cleanup',
+    () async {
+      await store.enqueue('one', 'circle', fix('prior-login', now), now);
+      final started = await store.activate(
+        'one',
+        'circle',
+        now + 1000,
+        minimumStartedAt: now + 500,
+      );
+      expect(started, now + 1000);
+      expect(await store.claim('one', now + 1000), isNull);
+      expect(
+        await store.enqueue(
+          'one',
+          'circle',
+          fix('signed-out-time', now + 700),
+          now + 1000,
+        ),
+        false,
+      );
+    },
+  );
 }

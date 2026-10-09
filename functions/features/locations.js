@@ -24,13 +24,18 @@ function createLocationHandlers(db) {
   const places = require('./places').createPlaceHandlers(db);
   async function ingest(request) {
     const uid = authenticated(request);
-    const { circleId, fixes } = request.data || {};
+    const { circleId, fixes, sharingStartedAt } = request.data || {};
     const now = Date.now();
+    const authTime = request.auth?.token?.auth_time;
+    if (!Number.isSafeInteger(authTime) || authTime <= 0) throw new HttpsError('unauthenticated', 'Sign in again before sharing.');
+    if (!Number.isSafeInteger(sharingStartedAt) || sharingStartedAt < authTime * 1000
+      || sharingStartedAt > now + 30000) throw new HttpsError('failed-precondition', 'Sharing belongs to an earlier sign-in. Reopen the app to renew it.');
     if (typeof circleId !== 'string' || !circleId || circleId.length > 128
       || circleId.includes('/') || !Array.isArray(fixes) || fixes.length < 1 || fixes.length > 50) {
       throw new HttpsError('invalid-argument', 'Provide a circle and up to 50 fixes.');
     }
     const points = fixes.map((fix) => validateFix(fix, now));
+    if (points.some((point) => point.capturedAt < sharingStartedAt)) throw new HttpsError('invalid-argument', 'Fix predates the sharing session.');
     if (new Set(points.map((point) => point.id)).size !== points.length) {
       throw new HttpsError('invalid-argument', 'Duplicate fix IDs in batch.');
     }

@@ -10,7 +10,8 @@ const db = getFirestore(app);
 const places = require('../functions/features/places').createPlaceHandlers(db);
 const locations = require('../functions/features/locations').createLocationHandlers(db);
 after(() => deleteApp(app));
-const request = (uid, data) => ({ auth: { uid }, data: { expectedUid: uid, ...data } });
+const request = (uid, data) => ({ auth: { uid, token: { auth_time: Math.floor((Date.now() - 8 * 86400000) / 1000) } },
+  data: { expectedUid: uid, sharingStartedAt: Date.now() - 7 * 86400000, ...data } });
 const place = { name: 'Home', address: '', category: 'home', latitude: 0, longitude: 0,
   radius: 100, colorValue: 0xff00ff00, notifyArrive: true, notifyLeave: true };
 async function setup(id) {

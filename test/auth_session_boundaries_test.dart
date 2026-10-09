@@ -5,6 +5,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:family_guard/features/auth/services/auth_service.dart';
 
 class TestUser implements User {
@@ -105,6 +106,47 @@ class TestResult<T> implements HttpsCallableResult<T> {
 }
 
 void main() {
+  test('native stop failure does not leave Firebase signed in', () async {
+    SharedPreferences.setMockInitialValues({});
+    final auth = TestAuth();
+    final docs = Completer<DocumentSnapshot<Map<String, dynamic>>>();
+    final service = AuthService(
+      auth: auth,
+      firestore: TestFirestore(TestCollection(TestDocument(docs))),
+      functions: TestFunctions(),
+      stopTracking: (uid) async {
+        expect(uid, 'old');
+        throw StateError('native failure');
+      },
+    );
+    await expectLater(service.signOut(), throwsStateError);
+    expect(auth.signOutCalls, 1);
+    expect(auth.currentUser, isNull);
+  });
+  test('delayed sign-out cannot sign out the replacement account', () async {
+    SharedPreferences.setMockInitialValues({});
+    final auth = TestAuth(),
+        entered = Completer<void>(),
+        release = Completer<void>();
+    final docs = Completer<DocumentSnapshot<Map<String, dynamic>>>();
+    final service = AuthService(
+      auth: auth,
+      firestore: TestFirestore(TestCollection(TestDocument(docs))),
+      functions: TestFunctions(),
+      stopTracking: (_) {
+        entered.complete();
+        return release.future;
+      },
+    );
+    final operation = service.signOut();
+    final rejected = expectLater(operation, throwsStateError);
+    await entered.future;
+    auth.currentUser = TestUser('new');
+    release.complete();
+    await rejected;
+    expect(auth.currentUser?.uid, 'new');
+    expect(auth.signOutCalls, 0);
+  });
   for (final action in ['create', 'join', 'rotate']) {
     test('late $action result is discarded after account switch', () async {
       final auth = TestAuth();

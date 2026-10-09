@@ -14,14 +14,17 @@ class AuthService {
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
   final FirebaseFunctions _functions;
+  final Future<void> Function(String?)? _stopTracking;
 
   AuthService({
     FirebaseAuth? auth,
     FirebaseFirestore? firestore,
     FirebaseFunctions? functions,
+    Future<void> Function(String?)? stopTracking,
   }) : _auth = auth ?? FirebaseAuth.instance,
        _firestore = firestore ?? FirebaseFirestore.instance,
-       _functions = functions ?? FirebaseFunctions.instance;
+       _functions = functions ?? FirebaseFunctions.instance,
+       _stopTracking = stopTracking;
 
   User? get currentUser => _auth.currentUser;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -132,13 +135,24 @@ class AuthService {
   Future<void> signOut() async {
     final uid = _auth.currentUser?.uid;
     if (uid != null) await PushRuntime.active?.coordinator.detach(uid);
-    await LocationService.instance.stop();
+    Object? trackingError;
+    StackTrace? trackingStack;
+    try {
+      await (_stopTracking?.call(uid) ??
+          LocationService.instance.stop(expectedUid: uid));
+    } catch (error, stack) {
+      trackingError = error;
+      trackingStack = stack;
+    }
     if (_auth.currentUser?.uid != uid) {
       throw StateError('Your account changed.');
     }
     await _auth.signOut();
     if (uid != null) await UserSessionService.clearUserSession(uid);
     await LocationService.clearDebugLog();
+    if (trackingError != null) {
+      Error.throwWithStackTrace(trackingError, trackingStack!);
+    }
   }
 
   void _requireCurrentUid(String uid) {
@@ -162,7 +176,8 @@ class AuthService {
   Future<void> pauseDeletionSharing(String uid) async {
     _requireCurrentUid(uid);
     await PushRuntime.active?.coordinator.detach(uid);
-    await LocationService.instance.stop();
+    await (_stopTracking?.call(uid) ??
+        LocationService.instance.stop(expectedUid: uid));
     _requireCurrentUid(uid);
   }
 

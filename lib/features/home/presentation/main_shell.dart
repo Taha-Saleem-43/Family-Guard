@@ -42,6 +42,11 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
     if (role != UserRole.child ||
         initial.userId.isEmpty ||
         initial.circleId.isEmpty) {
+      if (initial.userId.isNotEmpty) {
+        await LocationService.instance
+            .stop(expectedUid: initial.userId)
+            .catchError((Object _) {});
+      }
       return;
     }
     _checkingTracking = true;

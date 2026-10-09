@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tracelet/tracelet.dart' as tl;
 import 'location_sync_service.dart';
+import 'tracking_lifecycle.dart';
 
 /// Owns native tracking lifecycle and forwards fixes to the shared sync service.
 /// Diagnostic fix logging is bounded and enabled only in debug builds.
@@ -15,11 +17,70 @@ class LocationService {
 
   // ── Internal state ─────────────────────────────────────────────────────────
   bool _isReady = false;
-  bool _isTracking = false;
+  bool _subscribed = false;
+  Future<void>? _initializing;
   Timer? _retryTimer;
+  String? _retryTimerUid;
+  int? _verifiedAuthTime;
+  late final _lifecycle = TrackingLifecycle(
+    currentUid: () => FirebaseAuth.instance.currentUser?.uid,
+    verifyScope: (uid, circleId) async {
+      if (FirebaseAuth.instance.currentUser?.metadata.lastSignInTime == null) {
+        return false;
+      }
+      final token = await FirebaseAuth.instance.currentUser!.getIdTokenResult();
+      if (FirebaseAuth.instance.currentUser?.uid != uid ||
+          token.authTime == null) {
+        return false;
+      }
+      final signedInAt = FirebaseAuth
+          .instance
+          .currentUser!
+          .metadata
+          .lastSignInTime!
+          .millisecondsSinceEpoch;
+      final authTime = token.authTime!.millisecondsSinceEpoch;
+      _verifiedAuthTime = signedInAt > authTime ? signedInAt : authTime;
+      final db = FirebaseFirestore.instance;
+      final profile = await db
+          .collection('users')
+          .doc(uid)
+          .get(const GetOptions(source: Source.server));
+      if (FirebaseAuth.instance.currentUser?.uid != uid) return false;
+      final data = profile.data();
+      if (data == null ||
+          data['role'] != 'child' ||
+          data['circleId'] != circleId ||
+          data['deletionRequested'] == true) {
+        return false;
+      }
+      final circle = await db
+          .collection('circles')
+          .doc(circleId)
+          .get(const GetOptions(source: Source.server));
+      return circle.exists &&
+          (circle.data()?['memberIds'] is List) &&
+          (circle.data()!['memberIds'] as List).contains(uid);
+    },
+    activate: (uid, circle) async {
+      await LocationSyncService.outbox.activate(
+        uid,
+        circle,
+        DateTime.now().millisecondsSinceEpoch,
+        minimumStartedAt: _verifiedAuthTime!,
+      );
+    },
+    deactivate: (uid) => LocationSyncService.outbox.deactivate(uid),
+    startNative: () async {
+      await tl.Tracelet.start();
+    },
+    stopNative: () async {
+      await tl.Tracelet.stop();
+    },
+  );
 
   bool get isReady => _isReady;
-  bool get isTracking => _isTracking;
+  bool get isTracking => _lifecycle.activeScope != null;
 
   // ── SharedPreferences key ──────────────────────────────────────────────────
   static const _logKey = 'fg_location_log';
@@ -29,22 +90,40 @@ class LocationService {
 
   /// Call once, from [main()] after [Tracelet.registerHeadlessTask()].
   /// Safe to call multiple times — no-ops if already ready.
-  Future<void> init() async {
-    if (_isReady) return;
+  Future<void> init() {
+    if (_isReady) return Future.value();
+    return _initializing ??= _initialize().whenComplete(
+      () => _initializing = null,
+    );
+  }
 
+  Future<void> _initialize() async {
     // Subscribe to foreground location events before calling ready().
-    tl.Tracelet.onLocation((tl.Location loc) async {
-      await appendDebugLog(loc, source: 'FOREGROUND');
-      await LocationSyncService.ingest(loc);
-    });
+    if (!_subscribed) {
+      _subscribed = true;
+      tl.Tracelet.onLocation((tl.Location loc) async {
+        try {
+          await appendDebugLog(loc, source: 'FOREGROUND');
+        } catch (_) {
+          /* Diagnostics do not block persistence. */
+        }
+        try {
+          await LocationSyncService.ingest(loc);
+        } catch (_) {
+          debugPrint(
+            '[LocationService] Persistence failed; recovery will retry.',
+          );
+        }
+      });
 
-    // Subscribe to motion-change events (stationary ↔ moving transitions).
-    tl.Tracelet.onMotionChange((tl.Location loc) {
-      unawaited(LocationSyncService.ingest(loc));
-    });
-    tl.Tracelet.onConnectivityChange((event) {
-      unawaited(LocationSyncService.flush());
-    });
+      // Subscribe to motion-change events (stationary ↔ moving transitions).
+      tl.Tracelet.onMotionChange((tl.Location loc) {
+        unawaited(LocationSyncService.ingest(loc).catchError((Object _) {}));
+      });
+      tl.Tracelet.onConnectivityChange((event) {
+        unawaited(LocationSyncService.flush().catchError((Object _) {}));
+      });
+    }
 
     await tl.Tracelet.ready(
       tl.Config.balanced().copyWith(
@@ -87,31 +166,23 @@ class LocationService {
 
   Future<void> start({required String uid, required String circleId}) async {
     if (!_isReady || FirebaseAuth.instance.currentUser?.uid != uid) return;
-    await LocationSyncService.outbox.activate(
-      uid,
-      circleId,
-      DateTime.now().millisecondsSinceEpoch,
-    );
-    if (FirebaseAuth.instance.currentUser?.uid != uid) {
-      await LocationSyncService.outbox.deactivate(uid);
-      return;
-    }
-    await tl.Tracelet.start();
-    _isTracking = true;
+    await _lifecycle.start(uid, circleId);
+    if (_lifecycle.activeScope != (uid: uid, circleId: circleId)) return;
     _retryTimer?.cancel();
+    _retryTimerUid = uid;
     _retryTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       unawaited(LocationSyncService.recover().catchError((Object _) {}));
     });
     unawaited(LocationSyncService.recover().catchError((Object _) {}));
   }
 
-  Future<void> stop() async {
-    _retryTimer?.cancel();
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid != null) await LocationSyncService.outbox.deactivate(uid);
-    // Native tracking may already be running after a process restart.
-    await tl.Tracelet.stop();
-    _isTracking = false;
+  Future<void> stop({String? expectedUid}) async {
+    final uid = expectedUid ?? FirebaseAuth.instance.currentUser?.uid;
+    if (_retryTimerUid == uid || uid == null) {
+      _retryTimer?.cancel();
+      _retryTimerUid = null;
+    }
+    await _lifecycle.stop(uid);
   }
 
   // ── Event subscriptions (thin wrappers) ───────────────────────────────────

@@ -161,7 +161,9 @@ class AppStateNotifier extends StateNotifier<AppState> {
           );
           final stop = _stopSharing;
           unawaited(
-            (stop != null ? stop(uid) : LocationService.instance.stop())
+            (stop != null
+                    ? stop(uid)
+                    : LocationService.instance.stop(expectedUid: uid))
                 .catchError((Object _) {}),
           );
         } else if (scope.name != state.userName) {
@@ -182,7 +184,9 @@ class AppStateNotifier extends StateNotifier<AppState> {
           state = initial.copyWith(userId: uid, accountUnavailable: true);
           final stop = _stopSharing;
           unawaited(
-            (stop != null ? stop(uid) : LocationService.instance.stop())
+            (stop != null
+                    ? stop(uid)
+                    : LocationService.instance.stop(expectedUid: uid))
                 .catchError((Object _) {}),
           );
         }
@@ -247,9 +251,10 @@ class AppStateNotifier extends StateNotifier<AppState> {
     );
     final stop = _stopSharing;
     unawaited(
-      (stop != null ? stop(uid) : LocationService.instance.stop()).catchError(
-        (Object _) {},
-      ),
+      (stop != null
+              ? stop(uid)
+              : LocationService.instance.stop(expectedUid: uid))
+          .catchError((Object _) {}),
     );
   }
 

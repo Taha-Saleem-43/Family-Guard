@@ -11,7 +11,11 @@ class LocationOutbox {
   final DatabaseFactory _factory;
   final String? _path;
   Future<Database>? _opening;
-  Future<Database> get database => _opening ??= _open();
+  Future<Database> get database =>
+      _opening ??= _open().catchError((Object error, StackTrace stack) {
+        _opening = null;
+        Error.throwWithStackTrace(error, stack);
+      });
   Future<Database> _open() async => _factory.openDatabase(
     _path ??
         path.join(
@@ -33,7 +37,12 @@ class LocationOutbox {
       },
     ),
   );
-  Future<int> activate(String uid, String circle, int now) async {
+  Future<int> activate(
+    String uid,
+    String circle,
+    int now, {
+    int minimumStartedAt = 0,
+  }) async {
     final db = await database;
     return db.transaction((tx) async {
       final rows = await tx.query(
@@ -43,17 +52,18 @@ class LocationOutbox {
       );
       if (rows.isNotEmpty &&
           rows.first['enabled'] == 1 &&
-          rows.first['circle'] == circle) {
+          rows.first['circle'] == circle &&
+          (rows.first['started'] as int) >= minimumStartedAt) {
         return rows.first['started'] as int;
       }
       await tx.delete('fixes', where: 'uid = ?', whereArgs: [uid]);
       await tx.insert('sharing', {
         'uid': uid,
         'circle': circle,
-        'started': now,
+        'started': max(now, minimumStartedAt),
         'enabled': 1,
       }, conflictAlgorithm: ConflictAlgorithm.replace);
-      return now;
+      return max(now, minimumStartedAt);
     });
   }
 
@@ -197,6 +207,7 @@ class LocationOutbox {
         uid,
         circle,
         token,
+        sharing.first['started'] as int,
         rows
             .map(
               (row) => Map<String, Object>.from(
@@ -254,9 +265,16 @@ class LocationOutbox {
 }
 
 class LocationLease {
-  const LocationLease(this.uid, this.circle, this.token, this.fixes);
+  const LocationLease(
+    this.uid,
+    this.circle,
+    this.token,
+    this.startedAt,
+    this.fixes,
+  );
   final String uid;
   final String circle;
   final String token;
+  final int startedAt;
   final List<Map<String, Object>> fixes;
 }

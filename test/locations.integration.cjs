@@ -18,7 +18,8 @@ async function setup(uid) {
   await db.doc(`users/${uid}`).set({ role: 'child', circleId: uid });
   await db.doc(`circles/${uid}`).set({ memberIds: [uid] });
 }
-const upload = (uid, fixes, circleId = uid) => ingest({ auth: { uid }, data: { expectedUid: uid, circleId, fixes } });
+const upload = (uid, fixes, circleId = uid) => ingest({ auth: { uid, token: { auth_time: Math.floor((Date.now() - 8 * 86400000) / 1000) } },
+  data: { expectedUid: uid, circleId, fixes, sharingStartedAt: Date.now() - 7 * 86400000 } });
 test('retries deduplicate history and cannot replace newer live coordinates', async () => {
   const uid = 'location-retry'; await setup(uid);
   const old = fix('a', 20000, 3), recent = fix('b', 1000, 4);
@@ -74,4 +75,11 @@ test('per-account recovery budget bounds writes before expensive processing', as
   assert.equal((await db.collection(`locationHistory/${uid}/points`).get()).size, 0);
   await upload(uid, [fix('6')]);
   await assert.rejects(upload(uid, [fix('7')]), { code: 'resource-exhausted' });
+});
+test('new sign-ins reject an old sharing session even with a fresh fix', async () => {
+  const uid = 'location-login-fence'; await setup(uid);
+  const authTime = Math.floor(Date.now() / 1000);
+  await assert.rejects(ingest({ auth: { uid, token: { auth_time: authTime } },
+    data: { expectedUid: uid, circleId: uid, sharingStartedAt: (authTime - 60) * 1000, fixes: [fix('8')] } }), { code: 'failed-precondition' });
+  assert.equal((await db.collection(`locationHistory/${uid}/points`).get()).size, 0);
 });

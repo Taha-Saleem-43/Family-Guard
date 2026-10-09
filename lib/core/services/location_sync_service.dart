@@ -39,6 +39,8 @@ class LocationSyncService {
     if (context == null || FirebaseAuth.instance.currentUser?.uid != user.uid) {
       return;
     }
+    final signedInAt = user.metadata.lastSignInTime?.millisecondsSinceEpoch;
+    if (signedInAt == null || (context['started'] as int) < signedInAt) return;
     final circle = context['circle'] as String;
     final speed = location.coords.speed < 0
         ? 0.0
@@ -94,8 +96,16 @@ class LocationSyncService {
   }
 
   static Future<void> flush() async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final user = FirebaseAuth.instance.currentUser;
+    final uid = user?.uid;
     if (uid == null) return;
+    final signedInAt = user?.metadata.lastSignInTime?.millisecondsSinceEpoch;
+    final context = await outbox.context(uid);
+    if (signedInAt == null ||
+        context == null ||
+        (context['started'] as int) < signedInAt) {
+      return;
+    }
     for (var batch = 0; batch < 3; batch++) {
       if (FirebaseAuth.instance.currentUser?.uid != uid) return;
       final lease = await outbox.claim(
@@ -114,6 +124,7 @@ class LocationSyncService {
             .call({
               'expectedUid': uid,
               'circleId': lease.circle,
+              'sharingStartedAt': lease.startedAt,
               'fixes': lease.fixes,
             });
         final data = result.data;

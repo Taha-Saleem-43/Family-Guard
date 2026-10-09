@@ -205,6 +205,7 @@ class FirestoreLocationService {
         await FirebaseFunctions.instance.httpsCallable('ingestLocations').call({
           'expectedUid': uid,
           'circleId': _uploadCircleId,
+          'sharingStartedAt': capturedAt.millisecondsSinceEpoch,
           'fixes': [
             {'id': id, ...fields},
           ],
