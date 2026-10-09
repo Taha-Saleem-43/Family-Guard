@@ -34,6 +34,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final _inviteCodeController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    final account = ref.read(appStateProvider);
+    if (account.userId.isNotEmpty) {
+      _pendingRole = account.role;
+      _currentStep = account.circleId.isEmpty ? OnboardingStep.role
+        : account.role == UserRole.child ? OnboardingStep.childConsent : OnboardingStep.permissions;
+    }
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
@@ -79,6 +90,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           password: _passwordController.text,
           displayName: displayName,
         );
+        if (!mounted) return;
         ref.read(appStateProvider.notifier).setUserSession(
           userId: account.uid,
           circleId: '',
@@ -91,6 +103,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           email: _emailController.text.trim(),
           password: _passwordController.text,
         );
+        if (!mounted) return;
         ref.read(appStateProvider.notifier).setUserSession(
           userId: account.uid,
           circleId: account.circleId ?? '',
@@ -109,9 +122,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         }
       }
     } catch (e) {
-      setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));
+      if (mounted) { setState(() => _errorMessage = e.toString().replaceAll('Exception: ', '')); }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) { setState(() => _isLoading = false); }
     }
   }
 
@@ -131,6 +144,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       final uid = authService.currentUser?.uid;
       if (uid == null) throw Exception('Please sign in.');
       final circle = await authService.createCircle(circleName: circleName);
+      if (!mounted) return;
       ref.read(appStateProvider.notifier).setUserSession(
         userId: uid,
         circleId: circle.id,
@@ -145,9 +159,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         _currentStep = OnboardingStep.circleCreated;
       });
     } catch (e) {
-      setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));
+      if (mounted) { setState(() => _errorMessage = e.toString().replaceAll('Exception: ', '')); }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) { setState(() => _isLoading = false); }
     }
   }
 
@@ -165,6 +179,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final authService = ref.read(authServiceProvider);
     try {
       final account = await authService.joinCircleByCode(inviteCode: code);
+      if (!mounted) return;
       // Role is assigned server-side from the invite code — never user-selected.
       final role = account.role == UserRole.child ? UserRole.child : UserRole.parent;
       ref.read(appStateProvider.notifier).setUserSession(
@@ -179,9 +194,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         _currentStep = OnboardingStep.permissions;
       });
     } catch (e) {
-      setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));
+      if (mounted) { setState(() => _errorMessage = e.toString().replaceAll('Exception: ', '')); }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) { setState(() => _isLoading = false); }
     }
   }
 
@@ -959,6 +974,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   // 6. Child Consent Screen (Child)
   Widget _buildChildConsent() {
+    final hasCircle = ref.watch(appStateProvider.select((state) => state.circleId)).isNotEmpty;
     return Container(
       key: const ValueKey('childConsent'),
       color: AppColors.bg,
@@ -971,13 +987,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Before you join',
+          Text(
+            hasCircle ? 'Before sharing your location' : 'Before you join',
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
           ),
           const SizedBox(height: 4),
-          const Text(
-            "Here's exactly what happens when you join a Circle as a child member.",
+          Text(
+            hasCircle ? 'Review what location sharing allows in your current circle.' : "Here's what happens when you join a Circle as a child member.",
             style: TextStyle(fontSize: 14, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 20),
@@ -990,19 +1006,19 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         children: [
-                          _buildConsentRow(Icons.location_on_rounded, 'Location always shared', 'Your parent will see your location continuously, including when the app is in the background or screen is off.'),
+                          _buildConsentRow(Icons.location_on_rounded, 'Location sharing', 'With your permission, parents in your circle receive your recent location, including in the background when Android allows it.'),
                           const Divider(height: 24),
-                          _buildConsentRow(Icons.notifications_active_rounded, 'Persistent notification', "You'll always see a notification in your status bar while location sharing is active."),
+                          _buildConsentRow(Icons.notifications_active_rounded, 'Tracking notice', 'Android shows a tracking notice while sharing is active. Its placement depends on your notification settings.'),
                           const Divider(height: 24),
-                          _buildConsentRow(Icons.history_rounded, 'History is recorded', 'Your location history is stored so your parent can review past activity.'),
+                          _buildConsentRow(Icons.history_rounded, 'History is recorded', 'Recent location history is stored for your circle’s parents to review. It is scheduled for deletion after 30 days.'),
                           const Divider(height: 24),
-                          _buildConsentRow(Icons.sos_rounded, 'You are in control of SOS', 'The SOS button is always available to you — one tap alerts every member instantly.'),
+                          _buildConsentRow(Icons.sos_rounded, 'You are in control of SOS', 'Use SOS to ask your circle for help. Sending requires a connection, and alerts may be delayed.'),
                         ],
                       ),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Container(
+                  if (!hasCircle) Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: AppColors.primaryLight,
@@ -1038,7 +1054,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: _isLoading ? null : _handleJoinCircle,
+                      onPressed: _isLoading ? null : hasCircle
+                          ? () => setState(() => _currentStep = OnboardingStep.permissions)
+                          : _handleJoinCircle,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.teal,
                         padding: const EdgeInsets.symmetric(vertical: 18),
@@ -1046,8 +1064,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       ),
                       child: _isLoading
                           ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                          : const Text(
-                              'I understand — Join Circle',
+                          : Text(
+                              hasCircle ? 'I understand — Continue' : 'I understand — Join Circle',
                               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
                             ),
                     ),

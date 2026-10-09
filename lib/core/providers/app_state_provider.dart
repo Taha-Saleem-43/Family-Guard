@@ -7,6 +7,7 @@ import '../../features/auth/domain/user_account_model.dart';
 import '../../features/auth/services/auth_service.dart';
 import '../models/member.dart';
 import '../services/location_service.dart';
+import '../models/account_scope.dart';
 export '../models/member.dart' show UserRole;
 
 enum AppStage { onboarding, main }
@@ -16,6 +17,7 @@ enum AppTab { map, history, places, alerts, settings }
 class AppState {
   static const _unchanged = Object();
   final DateTime? inviteExpiresAt;
+  final bool accountUnavailable;
   final AppStage stage;
   final UserRole role;
   final AppTab activeTab;
@@ -36,6 +38,7 @@ class AppState {
     this.userId = '',
     this.circleId = '',
     this.inviteExpiresAt,
+    this.accountUnavailable = false,
   });
   AppState copyWith({
     AppStage? stage,
@@ -48,6 +51,7 @@ class AppState {
     String? userId,
     String? circleId,
     Object? inviteExpiresAt = _unchanged,
+    bool? accountUnavailable,
   }) => AppState(
     stage: stage ?? this.stage,
     role: role ?? this.role,
@@ -61,11 +65,19 @@ class AppState {
     inviteExpiresAt: identical(inviteExpiresAt, _unchanged)
         ? this.inviteExpiresAt
         : inviteExpiresAt as DateTime?,
+    accountUnavailable: accountUnavailable ?? this.accountUnavailable,
   );
 }
 
 class AppStateNotifier extends StateNotifier<AppState> {
   StreamSubscription? _circleSub, _inviteSub;
+  StreamSubscription<AccountScope>? _profileSub;
+  String? _profileUid;
+  int _profileGeneration = 0;
+  String? _revokedCircleId;
+  final Stream<AccountScope> Function(String)? _profileStream;
+  final String? Function()? _currentUid;
+  final Future<void> Function(String)? _stopSharing;
   final Future<UserAccountModel?> Function()? _accountLoader;
   int _sessionGeneration = 0;
   static const initial = AppState(
@@ -74,11 +86,112 @@ class AppStateNotifier extends StateNotifier<AppState> {
     activeTab: AppTab.map,
     circleName: 'Family Circle',
   );
-  AppStateNotifier({Future<UserAccountModel?> Function()? accountLoader})
-    : _accountLoader = accountLoader,
-      super(initial);
+  AppStateNotifier({
+    Future<UserAccountModel?> Function()? accountLoader,
+    Stream<AccountScope> Function(String)? profileStream,
+    String? Function()? currentUid,
+    Future<void> Function(String)? stopSharing,
+  }) : _accountLoader = accountLoader,
+       _profileStream = profileStream,
+       _currentUid = currentUid,
+       _stopSharing = stopSharing,
+       super(initial);
+
+  void _watchOwnProfile() {
+    if (state.stage != AppStage.main) return;
+    final uid = state.userId;
+    if (uid.isEmpty || (_profileStream == null && Firebase.apps.isEmpty)) {
+      return;
+    }
+    if (_profileUid == uid && _profileSub != null) return;
+    _profileSub?.cancel();
+    _profileUid = uid;
+    final generation = ++_profileGeneration;
+    final stream =
+        _profileStream?.call(uid) ??
+        FirebaseFirestore.instance
+            .collection('users')
+            .doc(uid)
+            .snapshots(includeMetadataChanges: true)
+            .where((doc) => !doc.metadata.isFromCache)
+            .map((doc) => AccountScope.fromServer(uid, doc.data()));
+    bool current() =>
+        mounted &&
+        generation == _profileGeneration &&
+        state.userId == uid &&
+        (_currentUid != null
+                ? _currentUid()
+                : (Firebase.apps.isNotEmpty
+                      ? FirebaseAuth.instance.currentUser?.uid
+                      : uid)) ==
+            uid;
+    _profileSub = stream.listen(
+      (scope) {
+        if (!current() ||
+            scope.uid != uid ||
+            (state.stage != AppStage.main &&
+                !state.accountUnavailable &&
+                scope.available)) {
+          return;
+        }
+        if (scope.available &&
+            scope.circleId.isNotEmpty &&
+            scope.circleId == _revokedCircleId) {
+          return;
+        }
+        if (state.accountUnavailable ||
+            !scope.available ||
+            scope.circleId != state.circleId ||
+            scope.role != state.role) {
+          if (scope.available) {
+            ++_profileGeneration;
+            _profileSub?.cancel();
+            _profileSub = null;
+            _profileUid = null;
+          }
+          ++_sessionGeneration;
+          _circleSub?.cancel();
+          _inviteSub?.cancel();
+          state = initial.copyWith(
+            userId: uid,
+            userName: scope.name,
+            role: scope.role,
+            circleId: scope.circleId,
+            accountUnavailable: !scope.available,
+          );
+          final stop = _stopSharing;
+          unawaited(
+            (stop != null ? stop(uid) : LocationService.instance.stop())
+                .catchError((Object _) {}),
+          );
+        } else if (scope.name != state.userName) {
+          state = state.copyWith(userName: scope.name);
+        }
+      },
+      onError: (Object error) {
+        if (current() &&
+            error is FirebaseException &&
+            error.code == 'permission-denied') {
+          ++_profileGeneration;
+          _profileSub?.cancel();
+          _profileSub = null;
+          _profileUid = null;
+          ++_sessionGeneration;
+          _circleSub?.cancel();
+          _inviteSub?.cancel();
+          state = initial.copyWith(userId: uid, accountUnavailable: true);
+          final stop = _stopSharing;
+          unawaited(
+            (stop != null ? stop(uid) : LocationService.instance.stop())
+                .catchError((Object _) {}),
+          );
+        }
+      },
+    );
+  }
 
   void _subscribeToCircle(String circleId) {
+    _watchOwnProfile();
     final generation = ++_sessionGeneration;
     _circleSub?.cancel();
     _inviteSub?.cancel();
@@ -90,7 +203,7 @@ class AppStateNotifier extends StateNotifier<AppState> {
           (circle) {
             if (!mounted || generation != _sessionGeneration) return;
             if (circle == null) {
-              resetToOnboarding();
+              _loseCircleAccess(circleId);
               return;
             }
             state = state.copyWith(circleName: circle.name);
@@ -100,7 +213,7 @@ class AppStateNotifier extends StateNotifier<AppState> {
                 generation == _sessionGeneration &&
                 error is FirebaseException &&
                 error.code == 'permission-denied') {
-              resetToOnboarding();
+              _loseCircleAccess(circleId);
             }
           },
         );
@@ -119,6 +232,25 @@ class AppStateNotifier extends StateNotifier<AppState> {
         );
       }, onError: (Object _) {});
     }
+  }
+
+  void _loseCircleAccess(String circleId) {
+    final uid = state.userId;
+    _revokedCircleId = circleId;
+    ++_sessionGeneration;
+    _circleSub?.cancel();
+    _inviteSub?.cancel();
+    state = initial.copyWith(
+      userId: uid,
+      userName: state.userName,
+      accountUnavailable: true,
+    );
+    final stop = _stopSharing;
+    unawaited(
+      (stop != null ? stop(uid) : LocationService.instance.stop()).catchError(
+        (Object _) {},
+      ),
+    );
   }
 
   void setRole(UserRole role) {
@@ -170,6 +302,7 @@ class AppStateNotifier extends StateNotifier<AppState> {
     String? childCode,
     String? parentCode,
   }) {
+    _revokedCircleId = null;
     _sessionGeneration++;
     state = initial.copyWith(
       stage: state.stage,
@@ -234,6 +367,11 @@ class AppStateNotifier extends StateNotifier<AppState> {
   }
 
   void resetToOnboarding() {
+    _revokedCircleId = null;
+    ++_profileGeneration;
+    _profileSub?.cancel();
+    _profileSub = null;
+    _profileUid = null;
     unawaited(LocationService.instance.stop().catchError((Object _) {}));
     _sessionGeneration++;
     _circleSub?.cancel();
@@ -243,6 +381,8 @@ class AppStateNotifier extends StateNotifier<AppState> {
 
   @override
   void dispose() {
+    ++_profileGeneration;
+    _profileSub?.cancel();
     _sessionGeneration++;
     _circleSub?.cancel();
     _inviteSub?.cancel();

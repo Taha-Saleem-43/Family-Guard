@@ -18,6 +18,7 @@ import 'core/theme/app_theme.dart';
 import 'features/home/presentation/main_shell.dart';
 import 'features/onboarding/presentation/onboarding_screen.dart';
 import 'firebase_options.dart';
+import 'features/auth/services/auth_service.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Headless location callback — fires when Tracelet wakes the isolate
@@ -181,7 +182,10 @@ class _FamilyGuardAppState extends ConsumerState<FamilyGuardApp>
       if (mounted) {
         setState(
           () => _restoreError =
-              'Unable to verify your account. Check your connection and retry.',
+              Firebase.apps.isNotEmpty &&
+                  FirebaseAuth.instance.currentUser == null
+              ? null
+              : 'Unable to verify your account. Check your connection and retry.',
         );
       }
     } finally {
@@ -230,6 +234,14 @@ class _FamilyGuardAppState extends ConsumerState<FamilyGuardApp>
     });
 
     return MaterialApp(
+      key: ValueKey(
+        appState.stage == AppStage.main
+            ? ('main', appState.userId, appState.circleId, appState.role)
+            : (
+                appState.accountUnavailable ? 'blocked' : 'onboarding',
+                appState.userId,
+              ),
+      ),
       title: 'Family Guard',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light(),
@@ -251,6 +263,39 @@ class _FamilyGuardAppState extends ConsumerState<FamilyGuardApp>
                       ),
                     ],
                   ),
+                ),
+              ),
+            )
+          : appState.accountUnavailable
+          ? Scaffold(
+              body: Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Your account or circle is unavailable.'),
+                    const Text(
+                      'Sharing is paused. Please verify your account again.',
+                    ),
+                    FilledButton(
+                      onPressed: _restore,
+                      child: const Text('Retry'),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        try {
+                          await AuthService().signOut();
+                        } catch (_) {
+                          if (mounted) {
+                            setState(
+                              () => _restoreError =
+                                  'Could not finish signing out. Please retry.',
+                            );
+                          }
+                        }
+                      },
+                      child: const Text('Sign out'),
+                    ),
+                  ],
                 ),
               ),
             )
