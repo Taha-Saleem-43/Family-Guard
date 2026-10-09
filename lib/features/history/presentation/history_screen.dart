@@ -18,6 +18,13 @@ class HistoryScreen extends ConsumerStatefulWidget {
 class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   final MapController _mapController = MapController();
 
+  Widget _scrollableStatus({required Widget child}) => LayoutBuilder(
+    builder: (context, constraints) => ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [SizedBox(height: constraints.maxHeight, child: Center(child: child))],
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     final selectedTab = ref.watch(selectedHistoryTimeframeProvider);
@@ -26,6 +33,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final selectedMemberId = ref.watch(selectedHistoryMemberIdProvider) ?? appState.userId;
     final timelineItems = ref.watch(historyTimelineProvider);
     final polylinePoints = ref.watch(historyRoutePolylineProvider);
+    final history = ref.watch(rawLocationHistoryProvider);
+    final canSelectMembers = appState.role == UserRole.parent && members.length > 1;
 
     final selectedMember = members.where(
       (m) => m.id == selectedMemberId || m.id == 'm_self').firstOrNull
@@ -38,14 +47,19 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          ref.invalidate(rawLocationHistoryProvider);
+          try {
+            ref.invalidate(rawLocationHistoryProvider);
+            await ref.read(rawLocationHistoryProvider.future);
+          } catch (_) {
+            // The history panel displays the failure and offers a retry.
+          }
         },
         child: Column(
           children: [
             const SizedBox(height: 12),
 
             // Member Selector Bar (compact horizontal chips)
-            if (members.length > 1)
+            if (canSelectMembers)
               SizedBox(
                 height: 40,
                 child: ListView.separated(
@@ -76,7 +90,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   },
                 ),
               ),
-            if (members.length > 1) const SizedBox(height: 10),
+            if (canSelectMembers) const SizedBox(height: 10),
 
             // Timeframe Selection Tabs
             Padding(
@@ -248,8 +262,17 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
             // Timeline List / Empty State
             Expanded(
-              child: timelineItems.isEmpty
-                  ? Center(
+              child: history.isLoading
+                  ? _scrollableStatus(child: const CircularProgressIndicator())
+                  : history.hasError
+                  ? _scrollableStatus(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      const Text('Could not load location history.'),
+                      const SizedBox(height: 8),
+                      FilledButton(onPressed: () => ref.invalidate(rawLocationHistoryProvider),
+                        child: const Text('Retry history')),
+                    ]))
+                  : timelineItems.isEmpty
+                  ? _scrollableStatus(
                       child: Padding(
                         padding: const EdgeInsets.all(32.0),
                         child: Column(
@@ -272,6 +295,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       ),
                     )
                   : ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                       itemCount: timelineItems.length,
                       separatorBuilder: (context, index) => const SizedBox(height: 12),

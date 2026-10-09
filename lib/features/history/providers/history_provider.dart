@@ -16,7 +16,10 @@ import '../../places/providers/places_provider.dart';
 final selectedHistoryTimeframeProvider = StateProvider<int>((ref) => 0);
 
 /// Selected member for history viewing (defaults to current user)
-final selectedHistoryMemberIdProvider = StateProvider<String?>((ref) => null);
+final selectedHistoryMemberIdProvider = StateProvider<String?>((ref) {
+  ref.watch(appStateProvider.select((state) => (state.userId, state.circleId)));
+  return null;
+});
 
 /// Firestore location service instance
 final firestoreLocationServiceProvider = Provider(
@@ -33,7 +36,10 @@ final rawLocationHistoryProvider = FutureProvider<List<LocationHistoryPoint>>((
   ref,
 ) async {
   final uid = ref.watch(appStateProvider.select((state) => state.userId));
-  final selectedMemberId = ref.watch(selectedHistoryMemberIdProvider) ?? uid;
+  ref.watch(appStateProvider.select((state) => state.circleId));
+  final role = ref.watch(appStateProvider.select((state) => state.role));
+  final selection = ref.watch(selectedHistoryMemberIdProvider);
+  final selectedMemberId = role == UserRole.parent ? selection ?? uid : uid;
   final timeframeIndex = ref.watch(selectedHistoryTimeframeProvider);
   final service = ref.watch(firestoreLocationServiceProvider);
 

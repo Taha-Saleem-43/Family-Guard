@@ -204,7 +204,7 @@ class FirestoreLocationService {
       debugPrint(
         '[FirestoreLocationService] Error fetching location history: $e',
       );
-      return [];
+      rethrow;
     }
   }
 
