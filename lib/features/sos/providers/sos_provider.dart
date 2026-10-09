@@ -11,6 +11,7 @@ import '../models/sos_alert.dart';
 import '../services/sos_service.dart';
 
 class SOSState {
+  static const _unchanged = Object();
   final bool isSelfSosActive;
   final String? activeAlertId;
   final List<SOSAlert> activeCircleAlerts;
@@ -46,17 +47,21 @@ class SOSState {
 
   SOSState copyWith({
     bool? isSelfSosActive,
-    String? activeAlertId,
+    Object? activeAlertId = _unchanged,
     List<SOSAlert>? activeCircleAlerts,
-    DateTime? sosStartTime,
+    Object? sosStartTime = _unchanged,
     int? activeDurationSeconds,
     Set<String>? handledAlertIds,
   }) {
     return SOSState(
       isSelfSosActive: isSelfSosActive ?? this.isSelfSosActive,
-      activeAlertId: activeAlertId ?? this.activeAlertId,
+      activeAlertId: identical(activeAlertId, _unchanged)
+          ? this.activeAlertId
+          : activeAlertId as String?,
       activeCircleAlerts: activeCircleAlerts ?? this.activeCircleAlerts,
-      sosStartTime: sosStartTime ?? this.sosStartTime,
+      sosStartTime: identical(sosStartTime, _unchanged)
+          ? this.sosStartTime
+          : sosStartTime as DateTime?,
       activeDurationSeconds:
           activeDurationSeconds ?? this.activeDurationSeconds,
       handledAlertIds: handledAlertIds ?? this.handledAlertIds,
@@ -66,14 +71,18 @@ class SOSState {
 
 class SOSNotifier extends StateNotifier<SOSState> {
   final Ref _ref;
-  final SOSService _service = SOSService();
+  final SOSService _service;
   StreamSubscription<List<SOSAlert>>? _alertsSub;
   Timer? _durationTimer;
   Timer? _receiverSirenCutoffTimer;
   Timer? _receiverVibrationTimer;
   AudioPlayer? _audioPlayer;
+  bool _sending = false;
+  bool _resolving = false;
 
-  SOSNotifier(this._ref) : super(const SOSState()) {
+  SOSNotifier(this._ref, {SOSService? service})
+    : _service = service ?? SOSService(),
+      super(const SOSState()) {
     _initSubscription();
   }
 
@@ -125,17 +134,15 @@ class SOSNotifier extends StateNotifier<SOSState> {
   /// Plays alarm siren and vibration ONLY on receiver devices for MAX 5 SECONDS
   Future<void> _playReceiverSirenAlert() async {
     _stopReceiverSiren();
+    _receiverSirenCutoffTimer = Timer(const Duration(seconds: 5), () {
+      _stopReceiverSiren();
+    });
 
     // 1. Play siren sound (capped at 5 seconds)
     try {
       _audioPlayer ??= AudioPlayer();
       await _audioPlayer?.setReleaseMode(ReleaseMode.loop);
       await _audioPlayer?.play(AssetSource('sounds/siren.wav'));
-
-      // Strict 5-second max duration cutoff for siren
-      _receiverSirenCutoffTimer = Timer(const Duration(seconds: 5), () {
-        _stopReceiverSiren();
-      });
     } catch (e) {
       debugPrint('[SOSNotifier] Error playing receiver siren: $e');
     }
@@ -179,13 +186,17 @@ class SOSNotifier extends StateNotifier<SOSState> {
   }
 
   /// Triggers SOS for current user (Silent sender mode: no sound or vibration for self)
-  Future<void> triggerEmergency({
+  Future<bool> triggerEmergency({
     double? latitude,
     double? longitude,
     String address = 'Live Emergency Broadcast',
   }) async {
     final appState = _ref.read(appStateProvider);
-    if (appState.circleId.isEmpty || appState.userId.isEmpty) return;
+    if (appState.circleId.isEmpty || appState.userId.isEmpty || _sending) {
+      return false;
+    }
+    if (state.isSelfSosActive) return true;
+    _sending = true;
 
     // Use current member location if not explicitly provided
     final members = _ref.read(memberStateProvider);
@@ -200,9 +211,26 @@ class SOSNotifier extends StateNotifier<SOSState> {
     final lat = latitude ?? memberLoc?.latitude;
     final lng = longitude ?? memberLoc?.longitude;
 
+    final alertId = await _service.triggerSOS(
+      circleId: appState.circleId,
+      userId: appState.userId,
+      userName: appState.userName,
+      latitude: lat,
+      longitude: lng,
+      address: address,
+    );
+    _sending = false;
+    if (!mounted ||
+        _ref.read(appStateProvider).userId != appState.userId ||
+        _ref.read(appStateProvider).circleId != appState.circleId ||
+        alertId == null) {
+      return false;
+    }
+
     final now = DateTime.now();
     state = state.copyWith(
       isSelfSosActive: true,
+      activeAlertId: alertId,
       sosStartTime: now,
       activeDurationSeconds: 0,
     );
@@ -218,45 +246,38 @@ class SOSNotifier extends StateNotifier<SOSState> {
       );
     });
 
-    final alertId = await _service.triggerSOS(
-      circleId: appState.circleId,
-      userId: appState.userId,
-      userName: appState.userName,
-      latitude: lat,
-      longitude: lng,
-      address: address,
-    );
-
-    if (alertId != null) {
-      state = state.copyWith(activeAlertId: alertId);
-    }
+    return true;
   }
 
   /// Resolves current user's emergency alert
-  Future<void> resolveEmergency() async {
-    _durationTimer?.cancel();
-    _durationTimer = null;
-
-    // Reset local member pin border back to default
-    _ref.read(memberStateProvider.notifier).setSelfSosActive(false);
-
+  Future<bool> resolveEmergency() async {
+    if (_resolving) return false;
     final alertId = state.activeAlertId;
     final userId = _ref.read(appStateProvider).userId;
-
-    if (alertId != null && alertId.isNotEmpty) {
-      await _service.resolveSOS(
-        alertId: alertId,
-        userId: userId,
-        circleId: _ref.read(appStateProvider).circleId,
-      );
+    if (alertId == null || alertId.isEmpty) return false;
+    _resolving = true;
+    final resolved = await _service.resolveSOS(
+      alertId: alertId,
+      userId: userId,
+      circleId: _ref.read(appStateProvider).circleId,
+    );
+    _resolving = false;
+    if (!mounted ||
+        !resolved ||
+        _ref.read(appStateProvider).userId != userId ||
+        state.activeAlertId != alertId) {
+      return false;
     }
-
+    _durationTimer?.cancel();
+    _durationTimer = null;
+    _ref.read(memberStateProvider.notifier).setSelfSosActive(false);
     state = state.copyWith(
       isSelfSosActive: false,
       activeAlertId: null,
       sosStartTime: null,
       activeDurationSeconds: 0,
     );
+    return true;
   }
 
   /// Receiver dismisses emergency notification view locally

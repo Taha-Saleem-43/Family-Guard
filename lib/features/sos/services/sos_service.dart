@@ -7,7 +7,9 @@ class SOSService {
   final FirebaseFirestore? _firestore;
 
   SOSService({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? (Firebase.apps.isNotEmpty ? FirebaseFirestore.instance : null);
+    : _firestore =
+          firestore ??
+          (Firebase.apps.isNotEmpty ? FirebaseFirestore.instance : null);
 
   /// Triggers an emergency SOS alert in Firestore
   Future<String?> triggerSOS({
@@ -24,7 +26,9 @@ class SOSService {
 
     try {
       // 1. Create SOS Alert record in sos_alerts collection
-      final docRef = await _firestore.collection('sos_alerts').add({
+      final docRef = _firestore.collection('sos_alerts').doc();
+      final batch = _firestore.batch();
+      batch.set(docRef, {
         'circleId': circleId,
         'senderId': userId,
         'senderName': userName,
@@ -39,11 +43,12 @@ class SOSService {
       });
 
       // 2. Update user status to isSosActive = true
-      await _firestore.collection('users').doc(userId).set({
+      batch.set(_firestore.collection('users').doc(userId), {
         'isSosActive': true,
         'activeSosId': docRef.id,
         'lastSosAt': now.toIso8601String(),
       }, SetOptions(merge: true));
+      await batch.commit();
 
       debugPrint('[SOSService] SOS triggered successfully: ${docRef.id}');
       return docRef.id;
@@ -65,7 +70,10 @@ class SOSService {
 
     try {
       // Fetch document to calculate exact duration
-      final docSnap = await _firestore.collection('sos_alerts').doc(alertId).get();
+      final docSnap = await _firestore
+          .collection('sos_alerts')
+          .doc(alertId)
+          .get();
       int durationSeconds = 0;
       if (docSnap.exists) {
         final data = docSnap.data();
@@ -78,7 +86,8 @@ class SOSService {
       }
 
       // Update SOS record
-      await _firestore.collection('sos_alerts').doc(alertId).update({
+      final batch = _firestore.batch();
+      batch.update(_firestore.collection('sos_alerts').doc(alertId), {
         'status': 'resolved',
         'resolvedAt': now.toIso8601String(),
         'resolvedBy': userId,
@@ -87,13 +96,16 @@ class SOSService {
 
       // Clear user's active SOS flag
       if (userId.isNotEmpty) {
-        await _firestore.collection('users').doc(userId).set({
+        batch.set(_firestore.collection('users').doc(userId), {
           'isSosActive': false,
           'activeSosId': null,
         }, SetOptions(merge: true));
       }
+      await batch.commit();
 
-      debugPrint('[SOSService] SOS resolved successfully: $alertId (Duration: ${durationSeconds}s)');
+      debugPrint(
+        '[SOSService] SOS resolved successfully: $alertId (Duration: ${durationSeconds}s)',
+      );
       return true;
     } catch (e) {
       debugPrint('[SOSService] Error resolving SOS: $e');
@@ -111,10 +123,10 @@ class SOSService {
         .where('status', isEqualTo: 'active')
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => SOSAlert.fromMap(doc.id, doc.data()))
-          .toList();
-    });
+          return snapshot.docs
+              .map((doc) => SOSAlert.fromMap(doc.id, doc.data()))
+              .toList();
+        });
   }
 
   /// Stream of all circle SOS history (both active and resolved)
@@ -126,12 +138,12 @@ class SOSService {
         .where('circleId', isEqualTo: circleId)
         .snapshots()
         .map((snapshot) {
-      final list = snapshot.docs
-          .map((doc) => SOSAlert.fromMap(doc.id, doc.data()))
-          .toList();
-      // Sort newest first
-      list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-      return list;
-    });
+          final list = snapshot.docs
+              .map((doc) => SOSAlert.fromMap(doc.id, doc.data()))
+              .toList();
+          // Sort newest first
+          list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
+          return list;
+        });
   }
 }
