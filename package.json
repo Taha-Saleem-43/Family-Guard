@@ -8,7 +8,7 @@
     "test:sos": "firebase emulators:exec --project demo-family-guard --only firestore \"node scripts/run-node-tests.cjs test/sos.integration.cjs\"",
     "test:invites": "firebase emulators:exec --project demo-family-guard --only firestore \"node scripts/run-node-tests.cjs test/invite_rotation.integration.cjs\"",
     "test:accounts": "firebase emulators:exec --project demo-family-guard --only firestore \"node scripts/run-node-tests.cjs test/account_deletion.integration.cjs\"",
-    "test:push": "firebase emulators:exec --project demo-family-guard --only firestore \"node scripts/run-node-tests.cjs test/push.integration.cjs\"",
+    "test:push": "firebase emulators:exec --project demo-family-guard --only firestore \"node scripts/run-node-tests.cjs test/push.integration.cjs test/place_push.integration.cjs\"",
     "test:locations": "firebase emulators:exec --project demo-family-guard --only firestore \"node scripts/run-node-tests.cjs test/locations.integration.cjs\"",
     "test:places": "firebase emulators:exec --project demo-family-guard --only firestore \"node scripts/run-node-tests.cjs test/places.integration.cjs\""
   },

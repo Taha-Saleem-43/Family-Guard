@@ -12,7 +12,7 @@ The activity screen merges confirmed place events with SOS history. Place-feed f
 
 ## Deployment and remaining delivery work
 
-Deploy callables and configuration/indexes before rules that reject legacy direct place writes. Upgrade clients together. No production deployment has been performed. The implemented place event path populates the in-app activity feed; operating-system push delivery for place activity remains a separate engineering item. SOS push uses its own durable delivery queue.
+Deploy callables and configuration/indexes before rules that reject legacy direct place writes. Upgrade clients together. No production deployment has been performed. Place events also enqueue durable notifications for current parents. Delivery rechecks role, membership, device registration and event freshness; events older than fifteen minutes expire. Retries, leases and acknowledgements use the same delivery machinery as SOS, with a separate private queue and a normal-priority Android activity channel. Lock-screen content contains no member/place name or coordinates. Taps require server acknowledgement before opening activity. Accepted FCM requests do not prove device receipt, and short visits can still be missed.
 
 ## Verification
 

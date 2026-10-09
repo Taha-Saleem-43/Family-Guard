@@ -26,9 +26,17 @@ const deliveryId = (alertId, deviceId) => createHash('sha256').update(`${alertId
 const ms = (value) => value?.toMillis?.() ?? 0;
 const permanentErrors = new Set(['messaging/registration-token-not-registered', 'messaging/invalid-registration-token']);
 
-function createPushHandlers(db, messaging) {
+function createPushHandlers(db, messaging, kind = 'sos') {
+  if (!['sos', 'place'].includes(kind)) throw new Error('Unsupported notification kind');
+  const isPlace = kind === 'place';
+  const sourceCollection = isPlace ? 'placeEvents' : 'sos_alerts';
+  const sourceData = (snapshot) => {
+    const data = snapshot.data();
+    return data && isPlace ? { ...data, senderId: data.memberId,
+      timestamp: data.timestamp?.toDate?.()?.toISOString(), status: 'active' } : data;
+  };
   const devices = db.collection('pushDevices');
-  const deliveries = db.collection('sosPushDeliveries');
+  const deliveries = db.collection(isPlace ? 'placePushDeliveries' : 'sosPushDeliveries');
   const handlers = {
     async register(request) {
       const uid = authenticated(request);
@@ -79,10 +87,10 @@ function createPushHandlers(db, messaging) {
     },
     async enqueue(alertId) {
       if (!validId(alertId)) return;
-      const alertRef = db.doc(`sos_alerts/${alertId}`);
+      const alertRef = db.doc(`${sourceCollection}/${alertId}`);
       await db.runTransaction(async (tx) => {
         const alert = await tx.get(alertRef);
-        const data = alert.data();
+        const data = sourceData(alert);
         if (!data || data.status !== 'active' || data.pushFanout || !validId(data.circleId) ||
             !Number.isFinite(Date.parse(data.timestamp)) || Date.parse(data.timestamp) > Date.now() + 30000 ||
             Date.now() - Date.parse(data.timestamp) > deliveryWindowMs) return;
@@ -92,7 +100,7 @@ function createPushHandlers(db, messaging) {
         const recipients = [...new Set(ids.filter((uid) => uid !== data.senderId && validId(uid)))];
         const profiles = recipients.length ? await tx.getAll(...recipients.map((uid) => db.doc(`users/${uid}`))) : [];
         const allowed = profiles.filter((profile) => profile.exists && profile.data().circleId === data.circleId &&
-          !profile.data().deletionRequested).map((profile) => profile.id);
+          !profile.data().deletionRequested && (!isPlace || profile.data().role === 'parent')).map((profile) => profile.id);
         const registered = allowed.length ? await tx.get(devices.where('uid', 'in', allowed).limit(200)) : null;
         const targets = (registered?.docs ?? []).filter((device) => device.data().enabled &&
           ms(device.data().expireAt) > Date.now() && typeof device.data().token === 'string');
@@ -130,29 +138,33 @@ function createPushHandlers(db, messaging) {
       let sentVersion = job.registrationVersion;
       try {
         const [alert, circle, profile, device, deletion] = await Promise.all([
-          db.doc(`sos_alerts/${job.alertId}`).get(), db.doc(`circles/${job.circleId}`).get(),
+          db.doc(`${sourceCollection}/${job.alertId}`).get(), db.doc(`circles/${job.circleId}`).get(),
           db.doc(`users/${job.recipientUid}`).get(), devices.doc(job.installationId).get(),
           db.doc(`accountDeletions/${job.recipientUid}`).get(),
         ]);
-        if (!alert.exists || alert.data().status !== 'active' || alert.data().circleId !== job.circleId ||
-            !Number.isFinite(Date.parse(alert.data().timestamp)) || Date.parse(alert.data().timestamp) > Date.now() + 30000 ||
-            Date.now() - Date.parse(alert.data().timestamp) > deliveryWindowMs) {
+        const source = sourceData(alert);
+        if (!source || source.status !== 'active' || source.circleId !== job.circleId ||
+            !Number.isFinite(Date.parse(source.timestamp)) || Date.parse(source.timestamp) > Date.now() + 30000 ||
+            Date.now() - Date.parse(source.timestamp) > deliveryWindowMs) {
           await finish({ status: 'expired' }); return;
         }
         const token = device.data();
         if (!profile.exists || profile.data().deletionRequested || deletion.exists ||
             profile.data().circleId !== job.circleId || !circle.data()?.memberIds?.includes(job.recipientUid) ||
+            (isPlace && (profile.data().role !== 'parent' || !circle.data()?.memberIds?.includes(source.senderId))) ||
             !token?.enabled || token.uid !== job.recipientUid || token.version < job.registrationVersion ||
             ms(token.expireAt) <= Date.now()) {
           await finish({ status: 'cancelled' }); return;
         }
         sentVersion = token.version;
         const messageId = await messaging.send({ token: token.token,
-          notification: { title: 'Family Guard', body: 'A family emergency needs your attention. Open the app to check.' },
-          data: { type: 'sos', schemaVersion: '1', alertId: job.alertId, circleId: job.circleId,
+          notification: { title: 'Family Guard', body: isPlace
+            ? 'New place activity is available. Open the app to check.'
+            : 'A family emergency needs your attention. Open the app to check.' },
+          data: { type: kind, schemaVersion: '1', alertId: job.alertId, circleId: job.circleId,
             recipientUid: job.recipientUid, installationId: job.installationId, registrationVersion: String(token.version) },
-          android: { priority: 'high', ttl: 5 * 60000, collapseKey: 'family_guard_sos',
-            notification: { channelId: 'family_guard_sos', tag: job.alertId, icon: 'ic_stat_family_guard', visibility: 'private' } },
+          android: { priority: isPlace ? 'normal' : 'high', ttl: 5 * 60000, collapseKey: isPlace ? 'family_guard_activity' : 'family_guard_sos',
+            notification: { channelId: isPlace ? 'family_guard_activity' : 'family_guard_sos', tag: job.alertId, icon: 'ic_stat_family_guard', visibility: 'private' } },
           apns: { headers: { 'apns-priority': '10', 'apns-collapse-id': job.alertId,
             'apns-expiration': String(Math.floor(Date.now() / 1000) + 300) }, payload: { aps: { sound: 'default' } } },
         });
@@ -200,12 +212,13 @@ function createPushHandlers(db, messaging) {
         const ref = deliveries.doc(deliveryId(data.alertId, deviceId));
         const [job, device, profile, alert, deletion] = await Promise.all([
           tx.get(ref), tx.get(devices.doc(deviceId)), tx.get(db.doc(`users/${uid}`)),
-          tx.get(db.doc(`sos_alerts/${data.alertId}`)), tx.get(db.doc(`accountDeletions/${uid}`)),
+          tx.get(db.doc(`${sourceCollection}/${data.alertId}`)), tx.get(db.doc(`accountDeletions/${uid}`)),
         ]);
         if (!job.exists || job.data().recipientUid !== uid || device.data()?.uid !== uid ||
             !device.data().enabled || device.data().version < data.registrationVersion || ms(device.data().expireAt) <= Date.now() ||
             !profile.exists || profile.data().deletionRequested || deletion.exists ||
-            profile.data().circleId !== job.data().circleId || alert.data()?.circleId !== job.data().circleId) {
+            profile.data().circleId !== job.data().circleId || alert.data()?.circleId !== job.data().circleId ||
+            (isPlace && profile.data().role !== 'parent')) {
           throw new HttpsError('permission-denied', 'This delivery does not belong to your current account.');
         }
         const circle = await tx.get(db.doc(`circles/${job.data().circleId}`));
@@ -214,7 +227,7 @@ function createPushHandlers(db, messaging) {
         }
         const field = data.kind === 'opened' ? 'openedAt' : 'receivedAt';
         if (!job.data()[field]) tx.update(ref, { [field]: Timestamp.now() });
-        return { acknowledged: true, active: alert.data().status === 'active', circleId: job.data().circleId };
+        return { acknowledged: true, active: isPlace || alert.data().status === 'active', circleId: job.data().circleId };
       });
     },
   };

@@ -1,12 +1,36 @@
 {
   "indexes": [
     {
-      "collectionGroup": "placeEvents", "queryScope": "COLLECTION",
-      "fields": [{ "fieldPath": "circleId", "order": "ASCENDING" }, { "fieldPath": "timestamp", "order": "DESCENDING" }]
+      "collectionGroup": "placeEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "circleId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
     },
     {
-      "collectionGroup": "placeEvents", "queryScope": "COLLECTION",
-      "fields": [{ "fieldPath": "circleId", "order": "ASCENDING" }, { "fieldPath": "memberId", "order": "ASCENDING" }, { "fieldPath": "timestamp", "order": "DESCENDING" }]
+      "collectionGroup": "placeEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "circleId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "memberId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
     },
     {
       "collectionGroup": "sos_alerts",
@@ -123,11 +147,49 @@
       ],
       "collectionGroup": "sosPushDeliveries",
       "queryScope": "COLLECTION"
+    },
+    {
+      "collectionGroup": "placePushDeliveries",
+      "fields": [
+        {
+          "order": "ASCENDING",
+          "fieldPath": "status"
+        },
+        {
+          "order": "ASCENDING",
+          "fieldPath": "nextAttemptAt"
+        }
+      ],
+      "queryScope": "COLLECTION"
+    },
+    {
+      "collectionGroup": "placePushDeliveries",
+      "fields": [
+        {
+          "order": "ASCENDING",
+          "fieldPath": "status"
+        },
+        {
+          "order": "ASCENDING",
+          "fieldPath": "leaseUntil"
+        }
+      ],
+      "queryScope": "COLLECTION"
     }
   ],
   "fieldOverrides": [
-    { "collectionGroup": "placeEvents", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
-    { "collectionGroup": "placePresence", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    {
+      "collectionGroup": "placeEvents",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "placePresence",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
     {
       "collectionGroup": "points",
       "fieldPath": "expireAt",
@@ -178,6 +240,12 @@
       "indexes": [],
       "fieldPath": "secretHash",
       "collectionGroup": "pushDevices"
+    },
+    {
+      "collectionGroup": "placePushDeliveries",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
     }
   ]
 }

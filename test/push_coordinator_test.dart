@@ -54,6 +54,7 @@ void main() {
         PushEnvelope.parse(data)!.acknowledgement('opened')['expectedUid'],
         'user',
       );
+      expect(PushEnvelope.parse({...data, 'type': 'place'})!.type, 'place');
       for (final change in [
         {'type': 'other'},
         {'registrationVersion': '0'},

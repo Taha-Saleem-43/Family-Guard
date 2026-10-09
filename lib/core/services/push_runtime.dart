@@ -154,6 +154,18 @@ class PushRuntime {
   }
 
   Future<void> _initialize() async {
+    await FlutterLocalNotificationsPlugin()
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >()
+        ?.createNotificationChannel(
+          const AndroidNotificationChannel(
+            'family_guard_activity',
+            'Place activity',
+            description: 'Arrival and departure activity in your family circle',
+            importance: Importance.defaultImportance,
+          ),
+        );
     final notifications = FlutterLocalNotificationsPlugin();
     await notifications
         .resolvePlatformSpecificImplementation<
@@ -189,7 +201,7 @@ class PushRuntime {
       return false;
     }
     final result = await _call(
-      'acknowledgeSosPush',
+      envelope.type == 'place' ? 'acknowledgePlacePush' : 'acknowledgeSosPush',
       envelope.acknowledgement(kind),
     );
     return result['acknowledged'] == true &&

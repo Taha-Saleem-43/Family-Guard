@@ -40,6 +40,14 @@ exports.deliverSosPush = onDocumentCreated({ document: 'sosPushDeliveries/{deliv
   retry: true, timeoutSeconds: 120, maxInstances: 10 }, (event) => push.process(event.params.deliveryId));
 exports.retrySosPushDeliveries = onSchedule({ schedule: 'every 1 minutes', region: options.region,
   timeoutSeconds: 120, maxInstances: 1 }, () => push.retryPending());
+const placePush = require('./features/push').createPushHandlers(db, getMessaging(), 'place');
+exports.acknowledgePlacePush = onCall(options, placePush.acknowledge);
+exports.enqueuePlacePush = onDocumentCreated({ document: 'placeEvents/{eventId}', region: options.region,
+  retry: true, timeoutSeconds: 120, maxInstances: 5 }, (event) => placePush.enqueue(event.params.eventId));
+exports.deliverPlacePush = onDocumentCreated({ document: 'placePushDeliveries/{deliveryId}', region: options.region,
+  retry: true, timeoutSeconds: 120, maxInstances: 10 }, (event) => placePush.process(event.params.deliveryId));
+exports.retryPlacePushDeliveries = onSchedule({ schedule: 'every 1 minutes', region: options.region,
+  timeoutSeconds: 120, maxInstances: 1 }, () => placePush.retryPending());
 
 function validate(fn, value) {
   try { return fn(value); } catch (error) {
