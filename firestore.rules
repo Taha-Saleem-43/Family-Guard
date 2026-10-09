@@ -10,7 +10,9 @@ service cloud.firestore {
     function member(circleId) {
       return signedIn() && circleId is string && circleId.size() > 0 && me().circleId == circleId
         && !me().get('deletionRequested', false)
-        && exists(/databases/$(database)/documents/circles/$(circleId));
+        && exists(/databases/$(database)/documents/circles/$(circleId))
+        && get(/databases/$(database)/documents/circles/$(circleId)).data.memberIds is list
+        && request.auth.uid in get(/databases/$(database)/documents/circles/$(circleId)).data.memberIds;
     }
     function parent(circleId) { return member(circleId) && me().role == 'parent'; }
     function sameCircleUser(uid) {

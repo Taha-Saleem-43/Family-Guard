@@ -20,6 +20,19 @@ before(async () => {
 });
 after(async () => { if (env) await env.cleanup(); });
 const dbFor = (uid) => env.authenticatedContext(uid).firestore();
+test('stale profile circle links cannot restore removed-parent access', async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'users/removedParent'), {
+      uid: 'removedParent', role: 'parent', circleId: 'a', displayName: 'Removed',
+    });
+  });
+  const db = dbFor('removedParent');
+  await assertSucceeds(getDoc(doc(db, 'users/removedParent')));
+  for (const path of ['circles/a', 'circles/a/private/invites', 'users/childA',
+    'locationHistory/childA/points/p', 'sos_alerts/s']) {
+    await assertFails(getDoc(doc(db, path)));
+  }
+});
 test('place activity is private to parents and the recorded child', async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), 'placeEvents/child-arrival'), { circleId: 'a', memberId: 'childA', timestamp: Timestamp.now() });
