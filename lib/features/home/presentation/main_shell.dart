@@ -9,6 +9,7 @@ import '../../history/presentation/history_screen.dart';
 import '../../places/presentation/places_screen.dart';
 import '../../alerts/presentation/alerts_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
+import '../../sos/presentation/widgets/emergency_host.dart';
 
 // Converted to ConsumerStatefulWidget so we can call LocationService
 // in initState (lifecycle) rather than every build() call.
@@ -75,18 +76,20 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       }
     }
 
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(child: buildBody()),
-            BottomNav(
-              activeTab: appState.activeTab,
-              onTabChanged: (tab) {
-                ref.read(appStateProvider.notifier).setActiveTab(tab);
-              },
-            ),
-          ],
+    return EmergencyHost(
+      child: Scaffold(
+        body: SafeArea(
+          child: Column(
+            children: [
+              Expanded(child: buildBody()),
+              BottomNav(
+                activeTab: appState.activeTab,
+                onTabChanged: (tab) {
+                  ref.read(appStateProvider.notifier).setActiveTab(tab);
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

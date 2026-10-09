@@ -11,6 +11,7 @@ Implemented foundations:
 - Timestamp history expiry fields and TTL configuration; honest empty history and real permission queries.
 - Regression tests and GitHub Actions for app, backend and rules verification.
 - SOS alert/profile changes use atomic batches. The sender becomes active only after a successful commit, failed resolution preserves the active alert, and failures offer retry feedback. Nullable SOS identifiers clear correctly. This does not implement push delivery, acknowledgement or durable retry after an ambiguous timeout.
+- Emergency handling remains mounted above every app tab. Confirmed server snapshots restore the sender's active alert and its original duration; server resolution clears it. Repeated snapshots sound each receiver alert once per session. Account changes invalidate stale callbacks, and subscription errors retain confirmed state and show an update warning. Offline restart restoration and persistent receiver dismissal remain unfinished.
 
 ## Deployment dependencies — do not deploy independently
 
@@ -23,7 +24,7 @@ History readers now query Firestore timestamps. Old string timestamps/expiry fie
 ## Remaining release gates
 
 - Production Firebase/Play Console access, approved permanent package ID, release signing, app-check registration and deployment review.
-- Push token lifecycle, backend SOS push fan-out, notification handling independent of the map tab, persisted SOS state and acknowledgement.
+- Push token lifecycle, backend SOS push fan-out, background notification handling, durable offline SOS restoration/idempotent retry, persistent receiver dismissal and delivery acknowledgement.
 - Native geofence transition processing and alerts; do not advertise it as working until tested end to end.
 - Durable offline upload queue/coalescing, timestamp/ordering reconciliation, accurate connectivity/freshness reporting and adaptive battery tuning. Current serialization is process-local and does not establish durable recovery by itself.
 - History cursor pagination and migration UX. Current query is bounded to 1,000 points; a full pagination interface is still needed.
@@ -39,4 +40,4 @@ Local Flutter suite: 55 tests passed. Dart analysis: no issues. Firestore securi
 
 These checks do not establish physical-device behavior, Play approval, deployed backend compatibility, or measured battery savings. GitHub Actions only runs remotely after the branch is pushed.
 
-The SOS state correction passed the final full 57-test Flutter suite, including failed-send/failed-resolution and nullable-field regressions. Flutter analysis reported no issues. Foundation GitHub Actions passed both Flutter and Firebase jobs after a portable launcher corrected a Node 22 test-isolation flag incompatibility. SOS remote checks run separately on its stacked draft pull request.
+The SOS state and restoration changes passed the full 61-test Flutter suite and final Flutter analysis with no issues. Regressions cover failed sending/resolution, nullable fields, restored sender alerts, subscription errors, receiver deduplication, same-circle account changes, late send completion and emergencies across content changes. Foundation GitHub Actions passed both Flutter and Firebase jobs after a portable launcher corrected a Node 22 test-isolation flag incompatibility. Both earlier draft pull requests were closed at the owner's request; verification now runs on feature branch pushes without opening pull requests.

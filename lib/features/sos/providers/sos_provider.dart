@@ -18,6 +18,7 @@ class SOSState {
   final DateTime? sosStartTime;
   final int activeDurationSeconds;
   final Set<String> handledAlertIds;
+  final bool updatesUnavailable;
 
   const SOSState({
     this.isSelfSosActive = false,
@@ -26,6 +27,7 @@ class SOSState {
     this.sosStartTime,
     this.activeDurationSeconds = 0,
     this.handledAlertIds = const {},
+    this.updatesUnavailable = false,
   });
 
   SOSAlert? get unhandledCircleEmergency {
@@ -52,6 +54,7 @@ class SOSState {
     Object? sosStartTime = _unchanged,
     int? activeDurationSeconds,
     Set<String>? handledAlertIds,
+    bool? updatesUnavailable,
   }) {
     return SOSState(
       isSelfSosActive: isSelfSosActive ?? this.isSelfSosActive,
@@ -65,6 +68,7 @@ class SOSState {
       activeDurationSeconds:
           activeDurationSeconds ?? this.activeDurationSeconds,
       handledAlertIds: handledAlertIds ?? this.handledAlertIds,
+      updatesUnavailable: updatesUnavailable ?? this.updatesUnavailable,
     );
   }
 }
@@ -79,16 +83,24 @@ class SOSNotifier extends StateNotifier<SOSState> {
   AudioPlayer? _audioPlayer;
   bool _sending = false;
   bool _resolving = false;
+  int _sessionGeneration = 0;
+  int _alarmGeneration = 0;
+  final Set<String> _soundedAlertIds = {};
+  final Future<void> Function()? _receiverAlarm;
 
-  SOSNotifier(this._ref, {SOSService? service})
-    : _service = service ?? SOSService(),
-      super(const SOSState()) {
+  SOSNotifier(
+    this._ref, {
+    SOSService? service,
+    Future<void> Function()? receiverAlarm,
+  }) : _service = service ?? SOSService(),
+       _receiverAlarm = receiverAlarm,
+       super(const SOSState()) {
     _initSubscription();
   }
 
   void _initSubscription() {
     _ref.listen<AppState>(appStateProvider, (prev, next) {
-      if (prev?.circleId != next.circleId) {
+      if (prev?.circleId != next.circleId || prev?.userId != next.userId) {
         _subscribeToCircle(next.circleId);
       }
     });
@@ -100,40 +112,104 @@ class SOSNotifier extends StateNotifier<SOSState> {
   }
 
   void _subscribeToCircle(String circleId) {
+    final generation = ++_sessionGeneration;
     _alertsSub?.cancel();
     _durationTimer?.cancel();
+    _soundedAlertIds.clear();
     _stopReceiverSiren();
     state = const SOSState();
     if (circleId.isEmpty) return;
 
-    _alertsSub = _service.streamActiveSOSAlerts(circleId).listen((alerts) {
-      final currentUid = _ref.read(appStateProvider).userId;
+    _alertsSub = _service
+        .streamActiveSOSAlerts(circleId)
+        .listen(
+          (alerts) {
+            if (!mounted || generation != _sessionGeneration) return;
+            final currentUid = _ref.read(appStateProvider).userId;
+            final selfAlerts =
+                alerts
+                    .where((a) => a.senderId == currentUid && a.isActive)
+                    .toList()
+                  ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+            _restoreSelfAlert(selfAlerts.isEmpty ? null : selfAlerts.first);
 
-      // Filter alerts sent by other circle members
-      final otherAlerts = alerts
-          .where((a) => a.senderId != currentUid)
-          .toList();
+            // Filter alerts sent by other circle members
+            final otherAlerts = alerts
+                .where((a) => a.senderId != currentUid && a.isActive)
+                .toList();
 
-      state = state.copyWith(activeCircleAlerts: otherAlerts);
+            state = state.copyWith(
+              activeCircleAlerts: otherAlerts,
+              updatesUnavailable: false,
+            );
 
-      // Check if there is an unhandled alert for receiver
-      SOSAlert? unhandled;
-      for (final a in otherAlerts) {
-        if (!state.handledAlertIds.contains(a.id)) {
-          unhandled = a;
-          break;
-        }
+            // Check if there is an unhandled alert for receiver
+            SOSAlert? unhandled;
+            for (final a in otherAlerts) {
+              if (!state.handledAlertIds.contains(a.id)) {
+                unhandled = a;
+                break;
+              }
+            }
+
+            if (unhandled != null && _soundedAlertIds.add(unhandled.id)) {
+              (_receiverAlarm?.call() ?? _playReceiverSirenAlert()).catchError((
+                Object error,
+              ) {
+                debugPrint('[SOSNotifier] Receiver alarm failed: $error');
+              });
+            }
+            if (unhandled == null) _stopReceiverSiren();
+          },
+          onError: (Object error) {
+            if (!mounted || generation != _sessionGeneration) return;
+            state = state.copyWith(updatesUnavailable: true);
+            // Keep the last confirmed emergency during a connection failure.
+            debugPrint('[SOSNotifier] Alert subscription failed: $error');
+          },
+        );
+  }
+
+  void _restoreSelfAlert(SOSAlert? alert) {
+    if (alert == null) {
+      _durationTimer?.cancel();
+      _durationTimer = null;
+      if (state.isSelfSosActive) {
+        state = state.copyWith(
+          isSelfSosActive: false,
+          activeAlertId: null,
+          sosStartTime: null,
+          activeDurationSeconds: 0,
+        );
+        _ref.read(memberStateProvider.notifier).setSelfSosActive(false);
       }
+      return;
+    }
+    final changed = state.activeAlertId != alert.id;
+    state = state.copyWith(
+      isSelfSosActive: true,
+      activeAlertId: alert.id,
+      sosStartTime: alert.timestamp,
+      activeDurationSeconds: alert.currentDurationSeconds,
+    );
+    if (changed) _ref.read(memberStateProvider.notifier).setSelfSosActive(true);
+    _startDurationTimer();
+  }
 
-      if (unhandled != null) {
-        _playReceiverSirenAlert();
-      }
+  void _startDurationTimer() {
+    if (_durationTimer?.isActive == true) return;
+    _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      final start = state.sosStartTime;
+      if (!mounted || start == null) return;
+      final seconds = DateTime.now().difference(start).inSeconds;
+      state = state.copyWith(activeDurationSeconds: seconds < 0 ? 0 : seconds);
     });
   }
 
   /// Plays alarm siren and vibration ONLY on receiver devices for MAX 5 SECONDS
   Future<void> _playReceiverSirenAlert() async {
     _stopReceiverSiren();
+    final generation = _alarmGeneration;
     _receiverSirenCutoffTimer = Timer(const Duration(seconds: 5), () {
       _stopReceiverSiren();
     });
@@ -142,7 +218,12 @@ class SOSNotifier extends StateNotifier<SOSState> {
     try {
       _audioPlayer ??= AudioPlayer();
       await _audioPlayer?.setReleaseMode(ReleaseMode.loop);
+      if (!mounted || generation != _alarmGeneration) return;
       await _audioPlayer?.play(AssetSource('sounds/siren.wav'));
+      if (!mounted || generation != _alarmGeneration) {
+        await _audioPlayer?.stop();
+        return;
+      }
     } catch (e) {
       debugPrint('[SOSNotifier] Error playing receiver siren: $e');
     }
@@ -150,6 +231,7 @@ class SOSNotifier extends StateNotifier<SOSState> {
     // 2. Trigger vibration (capped at 5 seconds)
     try {
       final hasVibrator = await Vibration.hasVibrator();
+      if (!mounted || generation != _alarmGeneration) return;
       if (hasVibrator == true) {
         Vibration.vibrate(
           pattern: [0, 500, 200, 500],
@@ -171,6 +253,7 @@ class SOSNotifier extends StateNotifier<SOSState> {
   }
 
   void _stopReceiverSiren() {
+    _alarmGeneration++;
     _receiverSirenCutoffTimer?.cancel();
     _receiverSirenCutoffTimer = null;
     _receiverVibrationTimer?.cancel();
@@ -192,6 +275,7 @@ class SOSNotifier extends StateNotifier<SOSState> {
     String address = 'Live Emergency Broadcast',
   }) async {
     final appState = _ref.read(appStateProvider);
+    final generation = _sessionGeneration;
     if (appState.circleId.isEmpty || appState.userId.isEmpty || _sending) {
       return false;
     }
@@ -211,23 +295,32 @@ class SOSNotifier extends StateNotifier<SOSState> {
     final lat = latitude ?? memberLoc?.latitude;
     final lng = longitude ?? memberLoc?.longitude;
 
-    final alertId = await _service.triggerSOS(
-      circleId: appState.circleId,
-      userId: appState.userId,
-      userName: appState.userName,
-      latitude: lat,
-      longitude: lng,
-      address: address,
-    );
-    _sending = false;
+    String? alertId;
+    try {
+      alertId = await _service.triggerSOS(
+        circleId: appState.circleId,
+        userId: appState.userId,
+        userName: appState.userName,
+        latitude: lat,
+        longitude: lng,
+        address: address,
+      );
+    } catch (error) {
+      debugPrint('[SOSNotifier] Sending failed: $error');
+    } finally {
+      _sending = false;
+    }
     if (!mounted ||
+        generation != _sessionGeneration ||
         _ref.read(appStateProvider).userId != appState.userId ||
         _ref.read(appStateProvider).circleId != appState.circleId ||
         alertId == null) {
       return false;
     }
 
-    final now = DateTime.now();
+    final now = state.activeAlertId == alertId
+        ? state.sosStartTime ?? DateTime.now()
+        : DateTime.now();
     state = state.copyWith(
       isSelfSosActive: true,
       activeAlertId: alertId,
@@ -239,12 +332,7 @@ class SOSNotifier extends StateNotifier<SOSState> {
     _ref.read(memberStateProvider.notifier).setSelfSosActive(true);
 
     // Start 1-second interval ticker for duration display
-    _durationTimer?.cancel();
-    _durationTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      state = state.copyWith(
-        activeDurationSeconds: state.activeDurationSeconds + 1,
-      );
-    });
+    _startDurationTimer();
 
     return true;
   }
@@ -254,18 +342,26 @@ class SOSNotifier extends StateNotifier<SOSState> {
     if (_resolving) return false;
     final alertId = state.activeAlertId;
     final userId = _ref.read(appStateProvider).userId;
+    final generation = _sessionGeneration;
     if (alertId == null || alertId.isEmpty) return false;
     _resolving = true;
-    final resolved = await _service.resolveSOS(
-      alertId: alertId,
-      userId: userId,
-      circleId: _ref.read(appStateProvider).circleId,
-    );
-    _resolving = false;
+    var resolved = false;
+    try {
+      resolved = await _service.resolveSOS(
+        alertId: alertId,
+        userId: userId,
+        circleId: _ref.read(appStateProvider).circleId,
+      );
+    } catch (error) {
+      debugPrint('[SOSNotifier] Resolution failed: $error');
+    } finally {
+      _resolving = false;
+    }
     if (!mounted ||
         !resolved ||
+        generation != _sessionGeneration ||
         _ref.read(appStateProvider).userId != userId ||
-        state.activeAlertId != alertId) {
+        (state.activeAlertId != null && state.activeAlertId != alertId)) {
       return false;
     }
     _durationTimer?.cancel();

@@ -121,7 +121,12 @@ class SOSService {
         .collection('sos_alerts')
         .where('circleId', isEqualTo: circleId)
         .where('status', isEqualTo: 'active')
-        .snapshots()
+        .snapshots(includeMetadataChanges: true)
+        .where(
+          (snapshot) =>
+              !snapshot.metadata.isFromCache &&
+              !snapshot.metadata.hasPendingWrites,
+        )
         .map((snapshot) {
           return snapshot.docs
               .map((doc) => SOSAlert.fromMap(doc.id, doc.data()))
