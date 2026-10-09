@@ -1,0 +1,111 @@
+name: Verify app
+on:
+  pull_request:
+  push:
+    branches: [main, 'taha/**', 'release/**']
+permissions:
+  contents: read
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    env:
+      GRADLE_USER_HOME: ${{ github.workspace }}/.cache/gradle
+      ANDROID_HOME: ${{ github.workspace }}/.cache/android-sdk
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/.cache/android-sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.7'
+          channel: stable
+          cache: true
+      - run: mkdir -p "$ANDROID_SDK_ROOT"
+      - name: Install SDK components into the checkout cache
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-34 platforms;android-35 platforms;android-36 build-tools;35.0.0 build-tools;36.1.0 ndk;28.2.13676358 cmake;3.22.1'
+          log-accepted-android-sdk-licenses: 'false'
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter build apk --debug --no-pub --target-platform android-arm64
+      - name: Verify 16 KB native library and APK alignment
+        run: |
+          bash scripts/check-native-alignment.sh \
+            build/app/outputs/flutter-apk/app-debug.apk \
+            "$ANDROID_SDK_ROOT/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objdump" \
+            "$ANDROID_SDK_ROOT/build-tools/36.1.0/zipalign"
+      - name: Reject unused exact-alarm permissions in the merged APK
+        run: |
+          "$ANDROID_SDK_ROOT/build-tools/36.1.0/aapt2" dump permissions \
+            build/app/outputs/flutter-apk/app-debug.apk > manifest-permissions.txt
+          if grep -Eq 'android[.]permission[.](SCHEDULE_EXACT_ALARM|USE_EXACT_ALARM)' manifest-permissions.txt; then
+            echo "Unexpected exact-alarm permission in the merged APK"
+            exit 1
+          fi
+      - name: Reject unconfigured production release
+        working-directory: android
+        run: |
+          if ./gradlew :app:validateReleaseConfiguration --no-daemon > release-validation.log 2>&1; then
+            echo "Release configuration unexpectedly accepted the development identity"
+            exit 1
+          fi
+          if ! grep -q "owner-approved FAMILY_GUARD_APPLICATION_ID" release-validation.log; then
+            cat release-validation.log
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.7'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze
+      - run: flutter test --coverage
+      - name: Verify durable SQLite queue
+        working-directory: tool/sqlite_tests
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flutter-coverage
+          path: coverage/lcov.info
+  firebase:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - run: npm ci --ignore-scripts
+      - run: npm ci --prefix functions --ignore-scripts
+      - run: npm run test:backend
+      - run: node --check functions/index.js
+      - run: npm run test:rules
+      - run: npm run test:membership
+      - run: npm run test:sos
+      - run: npm run test:invites
+      - run: npm run test:accounts
+      - run: npm run test:push
+      - run: npm run test:locations
+      - run: npm run test:places

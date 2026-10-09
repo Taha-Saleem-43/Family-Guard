@@ -108,7 +108,7 @@ void main() {
   });
 
   group('History Providers & Timeline Aggregation Tests', () {
-    test('historyTimelineProvider correctly aggregates mock location points into Stays and Trips', () async {
+    test('Missing history remains empty rather than generating simulated trips', () async {
       final container = ProviderContainer(
         overrides: [
           selectedHistoryTimeframeProvider.overrideWith((ref) => 0), // Today
@@ -121,7 +121,7 @@ void main() {
       await container.read(rawLocationHistoryProvider.future);
 
       final timelineItems = container.read(historyTimelineProvider);
-      expect(timelineItems, isNotEmpty);
+      expect(timelineItems, isEmpty);
 
       // Verify items have titles and valid duration strings
       for (final item in timelineItems) {
@@ -189,10 +189,10 @@ void main() {
       expect(find.text('30 Days'), findsOneWidget);
 
       // Verify Route Map Header (FlutterMap view when polyline points exist)
-      expect(find.byType(FlutterMap), findsOneWidget);
+      expect(find.byType(FlutterMap), findsNothing);
 
       // Verify 30-Day Auto Retention Badge
-      expect(find.textContaining('Auto-Clean <30d'), findsOneWidget);
+      expect(find.text('30-day history window'), findsOneWidget);
 
       // Tap '7 Days' tab
       await tester.tap(find.text('7 Days'));

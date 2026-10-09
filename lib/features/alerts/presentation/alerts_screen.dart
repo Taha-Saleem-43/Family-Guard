@@ -4,6 +4,8 @@ import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../sos/models/sos_alert.dart';
 import '../../sos/providers/sos_provider.dart';
+import '../providers/place_events_provider.dart';
+import '../../../core/models/alert_event.dart';
 
 class AlertsScreen extends ConsumerWidget {
   const AlertsScreen({super.key});
@@ -11,13 +13,14 @@ class AlertsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final sosHistoryAsync = ref.watch(circleSosHistoryProvider);
+    final placeEventsAsync = ref.watch(circlePlaceEventsProvider);
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: AppBar(
-        title: const Text('Activity Alerts'),
-      ),
+      appBar: AppBar(title: const Text('Activity Alerts')),
       body: sosHistoryAsync.when(
+        skipLoadingOnRefresh: false,
+        skipLoadingOnReload: false,
         loading: () => const Center(
           child: CircularProgressIndicator(color: AppColors.primary),
         ),
@@ -26,21 +29,70 @@ class AlertsScreen extends ConsumerWidget {
           subtitle: err.toString(),
         ),
         data: (alerts) {
-          if (alerts.isEmpty) {
+          final places =
+              !placeEventsAsync.isLoading && !placeEventsAsync.hasError
+              ? placeEventsAsync.valueOrNull ?? <AlertEvent>[]
+              : <AlertEvent>[];
+          final items = <({DateTime time, SOSAlert? sos, AlertEvent? place})>[
+            for (final alert in alerts)
+              (time: alert.timestamp, sos: alert, place: null),
+            for (final event in places)
+              (time: event.timestamp, sos: null, place: event),
+          ]..sort((a, b) => b.time.compareTo(a.time));
+          if (items.isEmpty && placeEventsAsync.isLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (items.isEmpty && placeEventsAsync.hasError) {
+            return _buildEmptyState(
+              title: 'Unable to Load Place Activity',
+              subtitle: 'Please try again when connected.',
+            );
+          }
+          if (items.isEmpty) {
             return _buildEmptyState(
               title: 'No Alerts Yet',
-              subtitle: 'Safety alerts, SOS emergency broadcasts, and low battery notifications will appear here in real time.',
+              subtitle:
+                  'SOS emergencies and confirmed place arrivals and departures will appear here.',
             );
           }
 
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: alerts.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 12),
-            itemBuilder: (context, index) {
-              final alert = alerts[index];
-              return _buildSOSAlertCard(alert);
-            },
+          return Column(
+            children: [
+              if (placeEventsAsync.hasError)
+                const Padding(
+                  padding: EdgeInsets.all(12),
+                  child: Text('Place activity is temporarily unavailable.'),
+                ),
+              Expanded(
+                child: ListView.separated(
+                  padding: const EdgeInsets.all(16),
+                  itemCount: items.length,
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    final item = items[index];
+                    if (item.sos != null) return _buildSOSAlertCard(item.sos!);
+                    final event = item.place!;
+                    return Card(
+                      child: ListTile(
+                        leading: Icon(
+                          event.type == AlertEventType.arrive
+                              ? Icons.login_rounded
+                              : Icons.logout_rounded,
+                          color: AppColors.teal,
+                        ),
+                        title: Text(
+                          '${event.memberName} ${event.type == AlertEventType.arrive ? 'arrived at' : 'left'} ${event.placeName}',
+                        ),
+                        subtitle: Text(
+                          DateFormat('MMM d, h:mm a').format(event.timestamp),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -54,17 +106,29 @@ class AlertsScreen extends ConsumerWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.notifications_none_rounded, size: 64, color: AppColors.textMuted),
+            const Icon(
+              Icons.notifications_none_rounded,
+              size: 64,
+              color: AppColors.textMuted,
+            ),
             const SizedBox(height: 16),
             Text(
               title,
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+              style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+                color: AppColors.textPrimary,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               subtitle,
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
+              style: const TextStyle(
+                fontSize: 13,
+                color: AppColors.textSecondary,
+                height: 1.4,
+              ),
             ),
           ],
         ),
@@ -88,7 +152,9 @@ class AlertsScreen extends ConsumerWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: (isActive ? AppColors.sosRed : Colors.black).withValues(alpha: isActive ? 0.15 : 0.04),
+            color: (isActive ? AppColors.sosRed : Colors.black).withValues(
+              alpha: isActive ? 0.15 : 0.04,
+            ),
             blurRadius: 10,
             offset: const Offset(0, 3),
           ),
@@ -119,16 +185,23 @@ class AlertsScreen extends ConsumerWidget {
                   children: [
                     Expanded(
                       child: Text(
-                        isActive ? '🚨 SOS EMERGENCY ALERT' : 'Emergency Alert Resolved',
+                        isActive
+                            ? '🚨 SOS EMERGENCY ALERT'
+                            : 'Emergency Alert Resolved',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w900,
-                          color: isActive ? AppColors.sosRed : AppColors.textPrimary,
+                          color: isActive
+                              ? AppColors.sosRed
+                              : AppColors.textPrimary,
                         ),
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
                       decoration: BoxDecoration(
                         color: color.withValues(alpha: 0.12),
                         borderRadius: BorderRadius.circular(10),
@@ -156,7 +229,11 @@ class AlertsScreen extends ConsumerWidget {
                 const SizedBox(height: 6),
                 Row(
                   children: [
-                    const Icon(Icons.timer_outlined, size: 14, color: AppColors.textMuted),
+                    const Icon(
+                      Icons.timer_outlined,
+                      size: 14,
+                      color: AppColors.textMuted,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       'Duration: $durationText',
@@ -167,7 +244,11 @@ class AlertsScreen extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    const Icon(Icons.access_time_rounded, size: 14, color: AppColors.textMuted),
+                    const Icon(
+                      Icons.access_time_rounded,
+                      size: 14,
+                      color: AppColors.textMuted,
+                    ),
                     const SizedBox(width: 4),
                     Text(
                       timeStr,

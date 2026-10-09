@@ -1,16 +1,55 @@
 import 'dart:math';
+import 'dart:async';
+import 'package:stream_transform/stream_transform.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../models/location_history_point.dart';
+import '../models/location_history_page.dart';
 import '../models/member.dart';
+import '../models/circle_roster.dart';
 import '../models/movement_activity.dart';
-import '../theme/app_colors.dart';
+import 'member_profile_decoder.dart';
+import 'latest_value_queue.dart';
+
+typedef _ProfileDocuments = List<DocumentSnapshot<Map<String, dynamic>>>;
+
+typedef _LocationUpload = ({
+  String uid,
+  double latitude,
+  double longitude,
+  double speedMph,
+  MovementActivity activity,
+  int batteryLevel,
+  bool isCharging,
+  DateTime capturedAt,
+});
 
 class FirestoreLocationService {
   final FirebaseFirestore? _firestore;
 
+  late final _uploads = LatestValueQueue<_LocationUpload>(
+    (fix) => _updateUserLocation(
+      uid: fix.uid,
+      latitude: fix.latitude,
+      longitude: fix.longitude,
+      speedMph: fix.speedMph,
+      activity: fix.activity,
+      batteryLevel: fix.batteryLevel,
+      isCharging: fix.isCharging,
+      capturedAt: fix.capturedAt,
+    ),
+  );
+  String? _lastReceivedUid;
+  DateTime? _lastReceivedAt;
+  DateTime? _lastUploadedCapturedAt;
   DateTime? _lastUploadTime;
+  String? _lastUploadedUid;
+  String? _circleLookupUid;
+  String? _uploadCircleId;
   double? _lastUploadedLat;
   double? _lastUploadedLng;
   MovementActivity? _lastUploadedActivity;
@@ -18,16 +57,20 @@ class FirestoreLocationService {
   bool? _lastUploadedCharging;
 
   FirestoreLocationService({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? (Firebase.apps.isNotEmpty ? FirebaseFirestore.instance : null);
+    : _firestore =
+          firestore ??
+          (Firebase.apps.isNotEmpty ? FirebaseFirestore.instance : null);
 
   DateTime? get lastUploadTime => _lastUploadTime;
+  DateTime? get lastUploadedCapturedAt => _lastUploadedCapturedAt;
+  String? get lastUploadedUid => _lastUploadedUid;
   double? get lastUploadedLat => _lastUploadedLat;
   double? get lastUploadedLng => _lastUploadedLng;
   MovementActivity? get lastUploadedActivity => _lastUploadedActivity;
   int? get lastUploadedBattery => _lastUploadedBattery;
   bool? get lastUploadedCharging => _lastUploadedCharging;
 
-  /// Uploads user location and status to Firestore with 3-layer throttling
+  /// Serialize writes while coalescing waiting callbacks to the newest fix.
   Future<void> updateUserLocation({
     required String uid,
     required double latitude,
@@ -36,83 +79,158 @@ class FirestoreLocationService {
     required MovementActivity activity,
     required int batteryLevel,
     required bool isCharging,
-  }) async {
-    if (uid.isEmpty) return;
+    DateTime? capturedAt,
+  }) {
+    final capture = (capturedAt ?? DateTime.now()).toUtc();
+    final age = DateTime.now().toUtc().difference(capture);
+    if (uid.isEmpty ||
+        !latitude.isFinite ||
+        !longitude.isFinite ||
+        latitude.abs() > 90 ||
+        longitude.abs() > 180 ||
+        age > const Duration(minutes: 2) ||
+        age < const Duration(seconds: -30) ||
+        (_lastReceivedUid == uid &&
+            _lastReceivedAt != null &&
+            capture.isBefore(_lastReceivedAt!))) {
+      return Future.value();
+    }
+    _lastReceivedUid = uid;
+    _lastReceivedAt = capture;
+    return _uploads.submit((
+      uid: uid,
+      latitude: latitude,
+      longitude: longitude,
+      speedMph: speedMph.isFinite && speedMph >= 0 && speedMph <= 1000
+          ? speedMph
+          : 0,
+      activity: activity,
+      batteryLevel: batteryLevel >= -1 && batteryLevel <= 100
+          ? batteryLevel
+          : -1,
+      isCharging: isCharging,
+      capturedAt: capture,
+    ));
+  }
 
-    final now = DateTime.now();
+  /// Uploads user location and status to Firestore with 3-layer throttling
+  Future<void> _updateUserLocation({
+    required String uid,
+    required double latitude,
+    required double longitude,
+    required double speedMph,
+    required MovementActivity activity,
+    required int batteryLevel,
+    required bool isCharging,
+    required DateTime capturedAt,
+  }) async {
+    if (uid.isEmpty ||
+        !latitude.isFinite ||
+        !longitude.isFinite ||
+        latitude.abs() > 90 ||
+        longitude.abs() > 180) {
+      return;
+    }
+
+    final now = DateTime.now().toUtc();
+    if (_lastUploadedUid != uid) {
+      _lastUploadTime = null;
+      _lastUploadedLat = null;
+      _lastUploadedLng = null;
+      _lastUploadedActivity = null;
+      _lastUploadedBattery = null;
+      _lastUploadedCharging = null;
+    }
 
     // 1. Check instant triggers (activity change, charging state change, or >=5% battery drop / crossing <=20% threshold)
-    final bool activityChanged = _lastUploadedActivity == null || _lastUploadedActivity != activity;
-    final bool chargingChanged = _lastUploadedCharging == null || _lastUploadedCharging != isCharging;
-    final bool batteryLevelChanged = _lastUploadedBattery == null ||
+    final bool activityChanged =
+        _lastUploadedActivity == null || _lastUploadedActivity != activity;
+    final bool chargingChanged =
+        _lastUploadedCharging == null || _lastUploadedCharging != isCharging;
+    final bool batteryLevelChanged =
+        _lastUploadedBattery == null ||
         (_lastUploadedBattery! - batteryLevel).abs() >= 5 ||
         (batteryLevel <= 20 && _lastUploadedBattery! > 20);
 
-    final bool isInstantTrigger = activityChanged || chargingChanged || batteryLevelChanged;
+    final bool isInstantTrigger =
+        activityChanged || chargingChanged || batteryLevelChanged;
 
     // 2. Check distance delta (meters)
     double distanceMovedMeters = 0.0;
     if (_lastUploadedLat != null && _lastUploadedLng != null) {
-      distanceMovedMeters = _calculateDistanceMeters(_lastUploadedLat!, _lastUploadedLng!, latitude, longitude);
+      distanceMovedMeters = _calculateDistanceMeters(
+        _lastUploadedLat!,
+        _lastUploadedLng!,
+        latitude,
+        longitude,
+      );
     } else {
       distanceMovedMeters = 999.0; // Force first write
     }
 
     // 3. Check time delta (seconds)
-    final timeElapsedSeconds = _lastUploadTime == null ? 999 : now.difference(_lastUploadTime!).inSeconds;
+    final timeElapsedSeconds = _lastUploadTime == null
+        ? 999
+        : now.difference(_lastUploadTime!).inSeconds;
 
     // Throttle rule: upload if instant trigger, OR periodic heartbeat (>=180s), OR (timeElapsed >= 45s AND distanceMoved >= 50m)
     final bool timeHeartbeat = timeElapsedSeconds >= 180;
-    final bool distanceMoved = timeElapsedSeconds >= 45 && distanceMovedMeters >= 50.0;
-    final bool shouldUpload = isInstantTrigger || timeHeartbeat || distanceMoved;
+    final bool distanceMoved =
+        timeElapsedSeconds >= 45 && distanceMovedMeters >= 50.0;
+    final bool shouldUpload =
+        isInstantTrigger || timeHeartbeat || distanceMoved;
 
     if (!shouldUpload) return;
 
     try {
       if (_firestore != null) {
-        final expireAt = now.add(const Duration(days: 30));
-
-        // Update active status in users collection
-        await _firestore.collection('users').doc(uid).set({
+        // Resolve once per account/process. Rules check membership again on every write.
+        if (_circleLookupUid != uid || _uploadCircleId == null) {
+          final profile = await _firestore
+              .collection('users')
+              .doc(uid)
+              .get(const GetOptions(source: Source.server));
+          final circle = profile.data()?['circleId'];
+          if (circle is! String || circle.isEmpty) return;
+          _circleLookupUid = uid;
+          _uploadCircleId = circle;
+        }
+        final fields = <String, Object>{
+          'capturedAt': capturedAt.millisecondsSinceEpoch,
           'latitude': latitude,
           'longitude': longitude,
           'speedMph': speedMph,
           'movementActivity': activity.name,
           'batteryLevel': batteryLevel,
           'isCharging': isCharging,
-          'lastSeen': now.toIso8601String(),
-          'expireAt': expireAt.toIso8601String(),
-        }, SetOptions(merge: true));
-
-        // Record history point in locationHistory/{uid}/points
-        final historyPoint = LocationHistoryPoint(
-          id: now.millisecondsSinceEpoch.toString(),
-          latitude: latitude,
-          longitude: longitude,
-          speedMph: speedMph,
-          movementActivity: activity,
-          timestamp: now,
-          expireAt: expireAt,
-        );
-
-        await _firestore
-            .collection('locationHistory')
-            .doc(uid)
-            .collection('points')
-            .doc(historyPoint.id)
-            .set(historyPoint.toMap());
-
-        // Auto purge expired documents directly from client-side
-        await purgeExpiredDocuments(uid: uid);
+        };
+        final id = sha256
+            .convert(utf8.encode(jsonEncode([uid, _uploadCircleId, fields])))
+            .toString();
+        await FirebaseFunctions.instance.httpsCallable('ingestLocations').call({
+          'expectedUid': uid,
+          'circleId': _uploadCircleId,
+          'sharingStartedAt': capturedAt.millisecondsSinceEpoch,
+          'fixes': [
+            {'id': id, ...fields},
+          ],
+        });
       }
 
       _lastUploadTime = now;
+      _lastUploadedCapturedAt = capturedAt;
+      _lastUploadedUid = uid;
       _lastUploadedLat = latitude;
       _lastUploadedLng = longitude;
       _lastUploadedActivity = activity;
       _lastUploadedBattery = batteryLevel;
       _lastUploadedCharging = isCharging;
     } catch (e) {
+      if (e is FirebaseException &&
+          ['permission-denied', 'failed-precondition'].contains(e.code)) {
+        _circleLookupUid = null;
+        _uploadCircleId = null;
+      }
       debugPrint('[FirestoreLocationService] Error updating location: $e');
     }
   }
@@ -120,198 +238,169 @@ class FirestoreLocationService {
   /// Fetches location history points for a user within a specified date range
   Future<List<LocationHistoryPoint>> fetchLocationHistory({
     required String uid,
+    String? circleId,
     required DateTime startDate,
     required DateTime endDate,
+  }) async => (await fetchHistoryPage(
+    uid: uid,
+    circleId: circleId,
+    startDate: startDate,
+    endDate: endDate,
+    pageSize: 1000,
+  )).points;
+
+  Future<LocationHistoryPage> fetchHistoryPage({
+    required String uid,
+    String? circleId,
+    required DateTime startDate,
+    required DateTime endDate,
+    HistoryCursor? cursor,
+    int pageSize = 200,
   }) async {
+    if (pageSize < 1 || pageSize > 1000) {
+      throw ArgumentError.value(
+        pageSize,
+        'pageSize',
+        'Must be between 1 and 1000',
+      );
+    }
     final firestore = _firestore;
-    if (firestore == null || uid.isEmpty) return [];
+    if (firestore == null || uid.isEmpty) return const LocationHistoryPage();
 
     try {
-      final startIso = startDate.toIso8601String();
-      final endIso = endDate.toIso8601String();
+      final startIso = Timestamp.fromDate(startDate.toUtc());
+      final endIso = Timestamp.fromDate(endDate.toUtc());
 
-      final snapshot = await firestore
+      Query<Map<String, dynamic>> query = firestore
           .collection('locationHistory')
           .doc(uid)
-          .collection('points')
+          .collection('points');
+      if (circleId != null) {
+        if (circleId.isEmpty) return const LocationHistoryPage();
+        query = query.where('circleId', isEqualTo: circleId);
+      }
+      query = query
           .where('timestamp', isGreaterThanOrEqualTo: startIso)
           .where('timestamp', isLessThanOrEqualTo: endIso)
           .orderBy('timestamp', descending: true)
-          .get();
-
-      return snapshot.docs
+          .orderBy(FieldPath.documentId, descending: true);
+      if (cursor != null) {
+        query = query.startAfter([
+          Timestamp.fromDate(cursor.timestamp.toUtc()),
+          cursor.documentId,
+        ]);
+      }
+      final snapshot = await query.limit(pageSize + 1).get();
+      final included = snapshot.docs.take(pageSize).toList();
+      final points = included
           .map((doc) => LocationHistoryPoint.fromMap(doc.id, doc.data()))
           .toList();
+
+      return LocationHistoryPage(
+        points: points,
+        nextCursor: snapshot.docs.length > pageSize && points.isNotEmpty
+            ? HistoryCursor(points.last.timestamp, included.last.id)
+            : null,
+      );
     } catch (e) {
-      debugPrint('[FirestoreLocationService] Error fetching location history: $e');
-      return [];
+      debugPrint(
+        '[FirestoreLocationService] Error fetching location history: $e',
+      );
+      rethrow;
     }
   }
 
-  /// Purges expired documents (older than [retentionDays] days or expired by [expireAt]) directly via client-side Firestore batch delete.
+  /// Retention is server-owned. Kept until older callers are removed.
   Future<int> purgeExpiredDocuments({
     required String uid,
     int retentionDays = 30,
-  }) async {
-    final firestore = _firestore;
-    if (firestore == null || uid.isEmpty) return 0;
-
-    try {
-      final nowIso = DateTime.now().toIso8601String();
-      final cutoffIso = DateTime.now()
-          .subtract(Duration(days: retentionDays))
-          .toIso8601String();
-
-      int deletedCount = 0;
-      final batch = firestore.batch();
-
-      // 1. Query locationHistory points where lastSeen/timestamp <= cutoffIso
-      final historyLastSeenQuery = await firestore
-          .collection('locationHistory')
-          .doc(uid)
-          .collection('points')
-          .where('timestamp', isLessThanOrEqualTo: cutoffIso)
-          .get();
-
-      for (final doc in historyLastSeenQuery.docs) {
-        batch.delete(doc.reference);
-        deletedCount++;
-      }
-
-      // 2. Query locationHistory points where expireAt <= nowIso
-      final historyExpireQuery = await firestore
-          .collection('locationHistory')
-          .doc(uid)
-          .collection('points')
-          .where('expireAt', isLessThanOrEqualTo: nowIso)
-          .get();
-
-      for (final doc in historyExpireQuery.docs) {
-        if (!historyLastSeenQuery.docs.any((d) => d.id == doc.id)) {
-          batch.delete(doc.reference);
-          deletedCount++;
-        }
-      }
-
-      // 3. Query locations collection where lastSeen <= cutoffIso
-      final locationQuery = await firestore
-          .collection('locations')
-          .where('lastSeen', isLessThanOrEqualTo: cutoffIso)
-          .get();
-
-      for (final doc in locationQuery.docs) {
-        if (doc.id == uid || doc.data()['uid'] == uid) {
-          batch.delete(doc.reference);
-          deletedCount++;
-        }
-      }
-
-      // 4. Query sos_alerts collection where timestamp <= cutoffIso
-      final sosAlertsQuery = await firestore
-          .collection('sos_alerts')
-          .where('timestamp', isLessThanOrEqualTo: cutoffIso)
-          .get();
-
-      for (final doc in sosAlertsQuery.docs) {
-        batch.delete(doc.reference);
-        deletedCount++;
-      }
-
-      // 5. Query sosEvents collection where timestamp <= cutoffIso
-      final sosEventsQuery = await firestore
-          .collection('sosEvents')
-          .where('timestamp', isLessThanOrEqualTo: cutoffIso)
-          .get();
-
-      for (final doc in sosEventsQuery.docs) {
-        batch.delete(doc.reference);
-        deletedCount++;
-      }
-
-      // 6. Query placeEvents collection where timestamp <= cutoffIso
-      final placeEventsQuery = await firestore
-          .collection('placeEvents')
-          .where('timestamp', isLessThanOrEqualTo: cutoffIso)
-          .get();
-
-      for (final doc in placeEventsQuery.docs) {
-        batch.delete(doc.reference);
-        deletedCount++;
-      }
-
-      if (deletedCount > 0) {
-        await batch.commit();
-      }
-
-      return deletedCount;
-    } catch (e) {
-      debugPrint('[FirestoreLocationService] Error purging expired documents: $e');
-      return 0;
-    }
-  }
+  }) async => 0;
 
   /// Streams circle members from Firestore
-  Stream<List<Member>> streamCircleMembers({required String circleId, required String currentUid}) {
-    if (circleId.isEmpty || _firestore == null) return Stream.value([]);
+  Stream<List<Member>> streamCircleMembers({
+    required String circleId,
+    required String currentUid,
+    required UserRole currentRole,
+  }) {
+    if (circleId.isEmpty || currentUid.isEmpty || _firestore == null) {
+      return Stream.value([]);
+    }
 
-    return _firestore
-        .collection('users')
-        .where('circleId', isEqualTo: circleId)
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        final data = doc.data();
-        final isSelf = doc.id == currentUid;
-        final name = data['displayName'] as String? ?? 'Family Member';
-        final roleStr = data['role'] as String? ?? 'child';
-        final role = roleStr == 'parent' ? UserRole.parent : UserRole.child;
-
-        final lat = (data['latitude'] as num?)?.toDouble();
-        final lng = (data['longitude'] as num?)?.toDouble();
-        final speed = (data['speedMph'] as num?)?.toDouble() ?? 0.0;
-        final activityStr = data['movementActivity'] as String? ?? 'stationary';
-        final activity = MovementActivity.fromString(activityStr);
-        final battery = (data['batteryLevel'] as num?)?.toInt() ?? 100;
-        final isCharging = data['isCharging'] as bool? ?? false;
-
-        DateTime lastSeen = DateTime.now();
-        if (data['lastSeen'] != null) {
-          try {
-            lastSeen = DateTime.parse(data['lastSeen'] as String);
-          } catch (_) {}
-        }
-
-        final isSosActive = data['isSosActive'] as bool? ?? false;
-        final isStale = DateTime.now().difference(lastSeen).inMinutes > 15;
-
-        final pinColor = isSosActive
-            ? AppColors.sosRed
-            : (isSelf ? AppColors.primary : (role == UserRole.parent ? AppColors.primary : AppColors.teal));
-
-        return Member(
-          id: doc.id,
-          name: isSelf ? '$name (You)' : name,
-          avatar: role == UserRole.parent ? '👨' : '👩‍🦰',
-          role: role,
-          latitude: lat,
-          longitude: lng,
-          address: lat != null && lng != null ? '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}' : 'Location Pending',
-          lastSeen: lastSeen,
-          batteryLevel: battery,
-          isCharging: isCharging,
-          speedMph: speed,
-          movementActivity: activity,
-          pinColor: pinColor,
-          isStale: isStale,
-          isSosActive: isSosActive,
-        );
-      }).toList();
+    final profiles = currentRole == UserRole.parent
+        ? _streamParentProfiles(circleId, currentUid)
+        : _firestore
+              .collection('users')
+              .doc(currentUid)
+              .snapshots()
+              .map(
+                (doc) => doc.exists
+                    ? [doc]
+                    : <DocumentSnapshot<Map<String, dynamic>>>[],
+              );
+    return profiles.map((documents) {
+      final now = DateTime.now();
+      return documents
+          .map(
+            (doc) => MemberProfileDecoder.decode(
+              doc.id,
+              doc.data()!,
+              currentUid: currentUid,
+              now: now,
+            ),
+          )
+          .toList();
     });
   }
 
-  static double _calculateDistanceMeters(double lat1, double lon1, double lat2, double lon2) {
+  Stream<_ProfileDocuments> _streamParentProfiles(String circleId, String uid) {
+    final db = _firestore!;
+    return db
+        .collection('circles')
+        .doc(circleId)
+        .snapshots()
+        .transform(
+          StreamTransformer<
+            DocumentSnapshot<Map<String, dynamic>>,
+            Stream<_ProfileDocuments>
+          >.fromHandlers(
+            handleData: (circle, sink) {
+              try {
+                final ids = CircleRoster.memberIds(circle.data(), uid);
+                sink.add(
+                  ids.isEmpty
+                      ? Stream.value(
+                          const <DocumentSnapshot<Map<String, dynamic>>>[],
+                        )
+                      : db
+                            .collection('users')
+                            .where('circleId', isEqualTo: circleId)
+                            .where(FieldPath.documentId, whereIn: ids)
+                            .snapshots()
+                            .map((snapshot) => snapshot.docs),
+                );
+              } catch (error, stack) {
+                sink.add(Stream.error(error, stack));
+              }
+            },
+            // Turn authority errors into replacement streams so the old query is cancelled.
+            handleError: (error, stack, sink) =>
+                sink.add(Stream.error(error, stack)),
+          ),
+        )
+        .switchLatest();
+  }
+
+  static double _calculateDistanceMeters(
+    double lat1,
+    double lon1,
+    double lat2,
+    double lon2,
+  ) {
     const p = 0.017453292519943295;
-    final a = 0.5 - cos((lat2 - lat1) * p) / 2 + cos(lat1 * p) * cos(lat2 * p) * (1 - cos((lon2 - lon1) * p)) / 2;
+    final a =
+        0.5 -
+        cos((lat2 - lat1) * p) / 2 +
+        cos(lat1 * p) * cos(lat2 * p) * (1 - cos((lon2 - lon1) * p)) / 2;
     return 12742000 * asin(sqrt(a));
   }
 }

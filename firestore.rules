@@ -1,80 +1,90 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper functions
-    function isAuthenticated() {
-      return request.auth != null;
+    function signedIn() {
+      return request.auth != null
+        && !exists(/databases/$(database)/documents/accountDeletions/$(request.auth.uid));
     }
-
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    function owner(uid) { return signedIn() && request.auth.uid == uid; }
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function member(circleId) {
+      return signedIn() && circleId is string && circleId.size() > 0 && me().circleId == circleId
+        && !me().get('deletionRequested', false)
+        && exists(/databases/$(database)/documents/circles/$(circleId))
+        && get(/databases/$(database)/documents/circles/$(circleId)).data.memberIds is list
+        && request.auth.uid in get(/databases/$(database)/documents/circles/$(circleId)).data.memberIds;
     }
-
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    function parent(circleId) { return member(circleId) && me().role == 'parent'; }
+    function sameCircleUser(uid) {
+      let circleId = get(/databases/$(database)/documents/users/$(uid)).data.circleId;
+      return member(circleId)
+        && uid in get(/databases/$(database)/documents/circles/$(circleId)).data.memberIds;
     }
-
-    function isParentInCircle(circleId) {
-      return isAuthenticated() && 
-        getUserData().circleId == circleId && 
-        getUserData().role == 'parent';
+    function validLocation(data) {
+      return data.latitude is number && data.latitude >= -90 && data.latitude <= 90
+        && data.longitude is number && data.longitude >= -180 && data.longitude <= 180;
     }
-
-    function isMemberOfCircle(circleId) {
-      return isAuthenticated() && getUserData().circleId == circleId;
+    function validProfileUpdate() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let data = request.resource.data;
+      return (!changed.hasAny(['displayName']) || (data.displayName is string
+          && data.displayName.size() > 0 && data.displayName.size() <= 80))
+        && (!changed.hasAny(['batteryLevel']) || (data.batteryLevel is int
+          && data.batteryLevel >= -1 && data.batteryLevel <= 100))
+        && (!changed.hasAny(['isCharging']) || data.isCharging is bool)
+        && (!changed.hasAny(['speedMph']) || (data.speedMph is number
+          && data.speedMph >= 0 && data.speedMph <= 1000))
+        && (!changed.hasAny(['movementActivity']) || data.movementActivity in ['stationary', 'walking', 'driving'])
+        && (!changed.hasAny(['lastSeen']) || (data.lastSeen is string && data.lastSeen.size() <= 40));
     }
-
-    // Users Collection
-    match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAuthenticated() && isOwner(userId);
+    match /users/{uid} {
+      allow read: if owner(uid) || (parent(resource.data.circleId)
+        && uid in get(/databases/$(database)/documents/circles/$(resource.data.circleId)).data.memberIds);
+      allow create: if owner(uid)
+        && !exists(/databases/$(database)/documents/accountDeletions/$(uid))
+        && request.resource.data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'circleId', 'createdAt'])
+        && request.resource.data.uid == uid && request.resource.data.role == 'child'
+        && request.resource.data.circleId == null && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0 && request.resource.data.displayName.size() <= 80;
+      allow update: if owner(uid)
+        && !resource.data.get('deletionRequested', false)
+        && validProfileUpdate()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'batteryLevel', 'isCharging'
+        ])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['latitude', 'longitude'])
+          || (member(resource.data.circleId) && validLocation(request.resource.data)));
     }
-
-    // Circles Collection
     match /circles/{circleId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (
-        isMemberOfCircle(circleId) || 
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds'])
-      );
+      allow read: if member(circleId);
+      match /private/{document} { allow read: if parent(circleId); }
     }
-
-    // Locations & Location History
-    match /locations/{userId} {
-      allow write: if isOwner(userId);
-      allow read: if isAuthenticated() && (
-        isOwner(userId) || 
-        getUserData().role == 'parent'
-      );
+    match /locations/{uid} {
+      allow read: if owner(uid) || (sameCircleUser(uid) && me().role == 'parent');
+      // Location writes are owned by the ordered ingestion callable.
     }
-
-    match /locationHistory/{userId}/points/{pointId} {
-      allow write: if isOwner(userId);
-      allow read: if isAuthenticated() && (
-        isOwner(userId) || 
-        getUserData().role == 'parent'
-      );
+    match /locationHistory/{uid}/points/{pointId} {
+      allow read: if owner(uid) || (sameCircleUser(uid) && parent(resource.data.circleId));
+      // Deterministic history IDs and live watermarks are server-owned.
     }
-
-    // Places & Place Events
     match /places/{placeId} {
-      allow read, write: if isAuthenticated() && isMemberOfCircle(resource.data.circleId);
-      allow create: if isAuthenticated();
+      allow read: if member(resource.data.circleId);
+      // Validated callables enforce parent authority and the circle's place cap.
     }
-
-    match /placeEvents/{eventId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // SOS Emergency Events & Alerts
     match /sos_alerts/{alertId} {
-      allow read, write: if isAuthenticated();
+      allow read: if member(resource.data.circleId);
+      // Authenticated callables own sender identity, idempotency and atomic profile state.
     }
-
-    match /sosEvents/{eventId} {
-      allow read, write: if isAuthenticated();
+    match /sosPushDeliveries/{deliveryId} {
+      allow read: if member(resource.data.circleId)
+        && get(/databases/$(database)/documents/sos_alerts/$(resource.data.alertId)).data.circleId == resource.data.circleId
+        && get(/databases/$(database)/documents/sos_alerts/$(resource.data.alertId)).data.senderId == request.auth.uid;
     }
+    match /placeEvents/{eventId} {
+      allow read: if member(resource.data.circleId)
+        && (parent(resource.data.circleId) || resource.data.memberId == request.auth.uid);
+    }
+    match /sosEvents/{eventId} { allow read: if member(resource.data.circleId); }
+    // All membership mutations, invite secrets, rate limits and unspecified paths are backend-only.
   }
 }

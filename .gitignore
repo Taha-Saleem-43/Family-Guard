@@ -31,7 +31,15 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+tool/sqlite_tests/build/
 /coverage/
+**/node_modules/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+.cache/
+.venv/
+.npm-cache/
 
 # Symbolication related
 app.*.symbols

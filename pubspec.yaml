@@ -37,6 +37,8 @@ dependencies:
   firebase_core: ^3.0.0
   firebase_auth: ^5.0.0
   cloud_firestore: ^5.0.0
+  cloud_functions: ^5.0.0
+  firebase_app_check: ^0.3.0
   firebase_messaging: ^15.0.0
 
   # Background location engine
@@ -45,7 +47,6 @@ dependencies:
   tracelet: ^3.6.13
 
   # Maps
-  google_maps_flutter: ^2.5.0
   flutter_map: ^7.0.2
   latlong2: ^0.9.1
   url_launcher: ^6.2.5
@@ -54,9 +55,11 @@ dependencies:
   sqflite: ^2.3.0
   path: ^1.9.0
   shared_preferences: ^2.2.0
+  crypto: ^3.0.6
 
   # State management
   flutter_riverpod: ^2.5.0
+  stream_transform: 2.1.1
 
   # Permissions
   permission_handler: ^11.3.0

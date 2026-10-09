@@ -9,14 +9,7 @@ import '../../../core/theme/app_colors.dart';
 
 // ── Internal sub-step enum ───────────────────────────────────────────────────
 
-enum _PermStep {
-  foreground,
-  background,
-  notifications,
-  battery,
-  oem,
-  allSet,
-}
+enum _PermStep { foreground, background, notifications, battery, oem, allSet }
 
 // ── Screen ───────────────────────────────────────────────────────────────────
 
@@ -27,8 +20,9 @@ enum _PermStep {
 class PermissionGateScreen extends ConsumerStatefulWidget {
   /// The role already determined by the onboarding flow.
   final UserRole role;
+  final PermissionService? service;
 
-  const PermissionGateScreen({super.key, required this.role});
+  const PermissionGateScreen({super.key, required this.role, this.service});
 
   @override
   ConsumerState<PermissionGateScreen> createState() =>
@@ -36,7 +30,9 @@ class PermissionGateScreen extends ConsumerStatefulWidget {
 }
 
 class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen> {
-  final _service = PermissionService();
+  late final PermissionService _service;
+  late final String _initialUid;
+  bool get _sharesLocation => widget.role == UserRole.child;
 
   _PermStep _step = _PermStep.foreground;
   bool _isLoading = false;
@@ -54,72 +50,80 @@ class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen> {
   @override
   void initState() {
     super.initState();
-    _checkOem();
+    _service = widget.service ?? PermissionService();
+    _initialUid = ref.read(appStateProvider).userId;
+    if (_sharesLocation) {
+      _checkOem();
+    } else {
+      _step = _PermStep.notifications;
+    }
   }
 
   Future<void> _checkOem() async {
-    final isOem = await _service.requiresOemAutoStartStep;
-    if (mounted) setState(() => _requiresOem = isOem);
+    try {
+      final isOem = await _service.requiresOemAutoStartStep;
+      if (mounted) setState(() => _requiresOem = isOem);
+    } catch (_) {
+      /* Optional OEM advice must not block onboarding. */
+    }
   }
 
   // ── Step handlers ──────────────────────────────────────────────────────────
 
-  Future<void> _requestForeground() async {
+  Future<void> _request(
+    Future<PermissionStatus> Function() action,
+    void Function(PermissionStatus) apply,
+  ) async {
+    if (_isLoading || ref.read(appStateProvider).userId != _initialUid) return;
     setState(() => _isLoading = true);
-    final status = await _service.requestForegroundLocation();
-    final granted = status.isGranted;
-    final permanentlyDenied = status.isPermanentlyDenied;
-    setState(() {
-      _isLoading = false;
-      _fgGranted = granted;
-      _fgPermanentlyDenied = permanentlyDenied;
-    });
-
-    if (granted) {
-      setState(() => _step = _PermStep.background);
+    try {
+      final status = await action();
+      if (!mounted || ref.read(appStateProvider).userId != _initialUid) return;
+      setState(() => apply(status));
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not request permission. Please try again.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
-    // If denied, UI stays on this step showing the blocking red banner.
   }
 
-  Future<void> _requestBackground() async {
-    setState(() => _isLoading = true);
+  Future<void> _requestForeground() =>
+      _request(_service.requestForegroundLocation, (status) {
+        _fgGranted = status.isGranted;
+        _fgPermanentlyDenied = status.isPermanentlyDenied;
+        if (_fgGranted) _step = _PermStep.background;
+      });
 
-    // Service enforces order via AssertionError (test T1).
-    final status = await _service.requestBackgroundLocation(
-      foregroundGranted: _fgGranted,
-    );
-
-    setState(() {
-      _isLoading = false;
+  Future<void> _requestBackground() => _request(
+    () => _service.requestBackgroundLocation(foregroundGranted: _fgGranted),
+    (status) {
       _bgGranted = status.isGranted;
       _step = _PermStep.notifications;
-    });
-    // Degraded-mode warning is shown on the allSet screen if _bgGranted == false.
-  }
+    },
+  );
 
-  Future<void> _requestNotifications() async {
-    setState(() => _isLoading = true);
-    final status = await _service.requestNotifications();
-    setState(() {
-      _isLoading = false;
-      _notifGranted = status.isGranted;
-      _step = _PermStep.battery;
-    });
-  }
+  Future<void> _requestNotifications() =>
+      _request(_service.requestNotifications, (status) {
+        _notifGranted = status.isGranted;
+        _step = _sharesLocation ? _PermStep.battery : _PermStep.allSet;
+      });
 
-  Future<void> _requestBattery() async {
-    setState(() => _isLoading = true);
-    final status = await _service.requestBatteryOptimization();
-    setState(() {
-      _isLoading = false;
-      _batteryGranted = status.isGranted;
-      _step = _requiresOem ? _PermStep.oem : _PermStep.allSet;
-    });
-  }
+  Future<void> _requestBattery() =>
+      _request(_service.requestBatteryOptimization, (status) {
+        _batteryGranted = status.isGranted;
+        _step = _requiresOem ? _PermStep.oem : _PermStep.allSet;
+      });
 
   void _skipOem() => setState(() => _step = _PermStep.allSet);
 
   void _finishOnboarding() {
+    if (ref.read(appStateProvider).userId != _initialUid) return;
     ref.read(appStateProvider.notifier).completeOnboarding(widget.role);
   }
 
@@ -189,10 +193,12 @@ class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen> {
                 }
               },
             )
-          : (!_fgGranted && !_fgPermanentlyDenied && _isLoading == false &&
-                  _step == _PermStep.foreground
-              ? null
-              : null),
+          : (!_fgGranted &&
+                    !_fgPermanentlyDenied &&
+                    _isLoading == false &&
+                    _step == _PermStep.foreground
+                ? null
+                : null),
     );
   }
 
@@ -225,7 +231,7 @@ class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen> {
   Widget _buildNotificationsStep() {
     return _PrePromptCard(
       key: const ValueKey('perm_notif'),
-      stepNumber: '3 of 4',
+      stepNumber: _sharesLocation ? '3 of 4' : '1 of 1',
       icon: Icons.notifications_active_rounded,
       iconColor: const Color(0xFF8B5CF6),
       title: 'Allow notifications',
@@ -239,7 +245,7 @@ class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen> {
       onPrimary: _requestNotifications,
       onSecondary: () => setState(() {
         _notifGranted = false;
-        _step = _PermStep.battery;
+        _step = _sharesLocation ? _PermStep.battery : _PermStep.allSet;
       }),
     );
   }
@@ -329,8 +335,11 @@ class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen> {
             ),
             child: Row(
               children: const [
-                Icon(Icons.info_outline_rounded,
-                    color: Color(0xFFF97316), size: 20),
+                Icon(
+                  Icons.info_outline_rounded,
+                  color: Color(0xFFF97316),
+                  size: 20,
+                ),
                 SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -358,12 +367,12 @@ class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen> {
                 backgroundColor: const Color(0xFFF97316),
                 padding: const EdgeInsets.symmetric(vertical: 18),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
               child: const Text(
                 'Open settings',
-                style:
-                    TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
               ),
             ),
           ),
@@ -413,8 +422,11 @@ class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen> {
               color: Color(0xFFECFDF5),
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.check_circle_rounded,
-                size: 48, color: Color(0xFF10B981)),
+            child: const Icon(
+              Icons.check_circle_rounded,
+              size: 48,
+              color: Color(0xFF10B981),
+            ),
           ),
           const SizedBox(height: 24),
           const Text(
@@ -441,33 +453,36 @@ class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen> {
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Column(
                 children: [
-                  _SummaryRow(
-                    icon: Icons.my_location_rounded,
-                    label: 'Location (foreground)',
-                    granted: summary.foregroundLocation,
-                  ),
-                  _SummaryRow(
-                    icon: Icons.location_searching_rounded,
-                    label: 'Location (background)',
-                    granted: summary.backgroundLocation,
-                    warnIfMissing: true,
-                  ),
+                  if (_sharesLocation)
+                    _SummaryRow(
+                      icon: Icons.my_location_rounded,
+                      label: 'Location (foreground)',
+                      granted: summary.foregroundLocation,
+                    ),
+                  if (_sharesLocation)
+                    _SummaryRow(
+                      icon: Icons.location_searching_rounded,
+                      label: 'Location (background)',
+                      granted: summary.backgroundLocation,
+                      warnIfMissing: true,
+                    ),
                   _SummaryRow(
                     icon: Icons.notifications_active_rounded,
                     label: 'Notifications',
                     granted: summary.notifications,
                   ),
-                  _SummaryRow(
-                    icon: Icons.battery_charging_full_rounded,
-                    label: 'Battery optimization',
-                    granted: summary.batteryOptimization,
-                  ),
+                  if (_sharesLocation)
+                    _SummaryRow(
+                      icon: Icons.battery_charging_full_rounded,
+                      label: 'Battery optimization',
+                      granted: summary.batteryOptimization,
+                    ),
                 ],
               ),
             ),
           ),
           // Degraded-mode warning (test T2)
-          if (summary.isDegraded) ...[
+          if (_sharesLocation && summary.isDegraded) ...[
             const SizedBox(height: 16),
             _DegradedModeBanner(
               onFixTap: () async {
@@ -489,7 +504,8 @@ class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen> {
                 backgroundColor: AppColors.primary,
                 padding: const EdgeInsets.symmetric(vertical: 18),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
+                  borderRadius: BorderRadius.circular(16),
+                ),
                 elevation: 2,
               ),
               child: const Text(
@@ -600,10 +616,7 @@ class _PrePromptCard extends StatelessWidget {
               height: 1.5,
             ),
           ),
-          if (blocker != null) ...[
-            const SizedBox(height: 16),
-            blocker!,
-          ],
+          if (blocker != null) ...[const SizedBox(height: 16), blocker!],
           const Spacer(),
           SizedBox(
             width: double.infinity,
@@ -613,19 +626,24 @@ class _PrePromptCard extends StatelessWidget {
                 backgroundColor: AppColors.primary,
                 padding: const EdgeInsets.symmetric(vertical: 18),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16)),
+                  borderRadius: BorderRadius.circular(16),
+                ),
               ),
               child: isLoading
                   ? const SizedBox(
                       width: 22,
                       height: 22,
                       child: CircularProgressIndicator(
-                          color: Colors.white, strokeWidth: 2.5),
+                        color: Colors.white,
+                        strokeWidth: 2.5,
+                      ),
                     )
                   : Text(
                       primaryLabel,
                       style: const TextStyle(
-                          fontSize: 17, fontWeight: FontWeight.w900),
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
             ),
           ),
@@ -658,10 +676,7 @@ class _BlockerBanner extends StatelessWidget {
   final String message;
   final VoidCallback onOpenSettings;
 
-  const _BlockerBanner({
-    required this.message,
-    required this.onOpenSettings,
-  });
+  const _BlockerBanner({required this.message, required this.onOpenSettings});
 
   @override
   Widget build(BuildContext context) {
@@ -736,8 +751,11 @@ class _DegradedModeBanner extends StatelessWidget {
         children: [
           Row(
             children: const [
-              Icon(Icons.warning_amber_rounded,
-                  color: Color(0xFFD97706), size: 18),
+              Icon(
+                Icons.warning_amber_rounded,
+                color: Color(0xFFD97706),
+                size: 18,
+              ),
               SizedBox(width: 8),
               Text(
                 'Foreground-only mode',
@@ -797,8 +815,8 @@ class _SummaryRow extends StatelessWidget {
     final Color statusColor = granted
         ? const Color(0xFF10B981)
         : warnIfMissing
-            ? const Color(0xFFD97706)
-            : AppColors.textMuted;
+        ? const Color(0xFFD97706)
+        : AppColors.textMuted;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -820,14 +838,18 @@ class _SummaryRow extends StatelessWidget {
             granted
                 ? Icons.check_circle_rounded
                 : warnIfMissing
-                    ? Icons.warning_amber_rounded
-                    : Icons.radio_button_unchecked_rounded,
+                ? Icons.warning_amber_rounded
+                : Icons.radio_button_unchecked_rounded,
             size: 20,
             color: statusColor,
           ),
           const SizedBox(width: 4),
           Text(
-            granted ? 'Granted' : warnIfMissing ? 'Limited' : 'Skipped',
+            granted
+                ? 'Granted'
+                : warnIfMissing
+                ? 'Limited'
+                : 'Skipped',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,

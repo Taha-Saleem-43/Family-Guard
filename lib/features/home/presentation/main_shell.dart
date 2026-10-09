@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/app_state_provider.dart';
 import '../../../core/services/location_service.dart';
+import '../../../core/services/permission_service.dart';
 import '../presentation/widgets/bottom_nav.dart';
 import '../../map/presentation/map_screen.dart';
 import '../../history/presentation/history_screen.dart';
 import '../../places/presentation/places_screen.dart';
 import '../../alerts/presentation/alerts_screen.dart';
 import '../../settings/presentation/settings_screen.dart';
+import '../../sos/presentation/widgets/emergency_host.dart';
 
 // Converted to ConsumerStatefulWidget so we can call LocationService
 // in initState (lifecycle) rather than every build() call.
@@ -18,34 +20,79 @@ class MainShellScreen extends ConsumerStatefulWidget {
   ConsumerState<MainShellScreen> createState() => _MainShellScreenState();
 }
 
-class _MainShellScreenState extends ConsumerState<MainShellScreen> {
+class _MainShellScreenState extends ConsumerState<MainShellScreen>
+    with WidgetsBindingObserver {
+  bool _checkingTracking = false;
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Defer until after the first frame so the widget tree is fully built
     // and ref is valid before we touch state.
     WidgetsBinding.instance.addPostFrameCallback((_) => _initTracking());
   }
 
   Future<void> _initTracking() async {
-    final role = ref.read(appStateProvider).role;
+    if (_checkingTracking || !mounted) return;
+    final initial = ref.read(appStateProvider);
+    final role = initial.role;
 
     // Only child devices broadcast location.
     // Parents read from Firestore (Step 7) — they don't run the tracker.
-    if (role != UserRole.child) return;
+    if (role != UserRole.child ||
+        initial.userId.isEmpty ||
+        initial.circleId.isEmpty) {
+      if (initial.userId.isNotEmpty) {
+        await LocationService.instance
+            .stop(expectedUid: initial.userId)
+            .catchError((Object _) {});
+      }
+      return;
+    }
+    _checkingTracking = true;
 
     try {
+      final permissions = await PermissionService().getPermissionSummary();
+      if (!mounted) return;
+      final checked = ref.read(appStateProvider);
+      if (checked.userId != initial.userId ||
+          checked.circleId != initial.circleId ||
+          checked.role != UserRole.child) {
+        return;
+      }
+      if (!permissions.canOperate) {
+        await LocationService.instance.stop();
+        return;
+      }
       await LocationService.instance.init();
-      await LocationService.instance.start();
+      if (!mounted) return;
+      final current = ref.read(appStateProvider);
+      if (current.role != UserRole.child ||
+          current.userId != initial.userId ||
+          current.circleId != initial.circleId) {
+        return;
+      }
+      await LocationService.instance.start(
+        uid: current.userId,
+        circleId: current.circleId,
+      );
     } catch (e) {
       // Non-fatal in Step 6 — failure is visible in the debug log.
       // Step 11 adds the full error-handling pass with banners and Crashlytics.
       debugPrint('[LocationService] init/start error: $e');
+    } finally {
+      _checkingTracking = false;
     }
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _initTracking();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // Do NOT stop tracking on dispose — the foreground service must persist
     // after the widget is unmounted (e.g. screen rotation, navigation).
     // Tracking is stopped only on explicit sign-out (Step 13).
@@ -71,18 +118,20 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       }
     }
 
-    return Scaffold(
-      body: SafeArea(
-        child: Column(
-          children: [
-            Expanded(child: buildBody()),
-            BottomNav(
-              activeTab: appState.activeTab,
-              onTabChanged: (tab) {
-                ref.read(appStateProvider.notifier).setActiveTab(tab);
-              },
-            ),
-          ],
+    return EmergencyHost(
+      child: Scaffold(
+        body: SafeArea(
+          child: Column(
+            children: [
+              Expanded(child: buildBody()),
+              BottomNav(
+                activeTab: appState.activeTab,
+                onTabChanged: (tab) {
+                  ref.read(appStateProvider.notifier).setActiveTab(tab);
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

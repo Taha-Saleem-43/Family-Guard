@@ -9,9 +9,12 @@ final placesServiceProvider = Provider<PlacesService>((ref) {
 });
 
 /// Real-time stream of Saved Places for the user's active Circle
-final circlePlacesStreamProvider = StreamProvider.autoDispose<List<Place>>((ref) {
-  final appState = ref.watch(appStateProvider);
-  final circleId = appState.circleId;
+final circlePlacesStreamProvider = StreamProvider.autoDispose<List<Place>>((
+  ref,
+) {
+  final circleId = ref.watch(
+    appStateProvider.select((state) => state.circleId),
+  );
 
   if (circleId.isEmpty || Firebase.apps.isEmpty) {
     return Stream.value([]);
@@ -22,7 +25,9 @@ final circlePlacesStreamProvider = StreamProvider.autoDispose<List<Place>>((ref)
 });
 
 /// Selected place category filter for Places Screen (null = All)
-final selectedPlaceCategoryFilterProvider = StateProvider<PlaceCategory?>((ref) => null);
+final selectedPlaceCategoryFilterProvider = StateProvider<PlaceCategory?>(
+  (ref) => null,
+);
 
 class PlacesController {
   final Ref _ref;
@@ -48,6 +53,7 @@ class PlacesController {
     final service = _ref.read(placesServiceProvider);
     await service.toggleNotifications(
       placeId: place.id,
+      circleId: place.circleId,
       notifyArrive: !place.notifyArrive,
     );
   }
@@ -56,13 +62,17 @@ class PlacesController {
     final service = _ref.read(placesServiceProvider);
     await service.toggleNotifications(
       placeId: place.id,
+      circleId: place.circleId,
       notifyLeave: !place.notifyLeave,
     );
   }
 
   Future<void> deletePlace(String placeId) async {
     final service = _ref.read(placesServiceProvider);
-    await service.deletePlace(placeId);
+    await service.deletePlace(
+      placeId,
+      circleId: _ref.read(appStateProvider).circleId,
+    );
   }
 }
 

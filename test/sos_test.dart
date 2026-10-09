@@ -4,6 +4,40 @@ import 'package:family_guard/core/models/member.dart';
 import 'package:family_guard/core/models/movement_activity.dart';
 import 'package:family_guard/features/sos/models/sos_alert.dart';
 import 'package:family_guard/features/sos/providers/sos_provider.dart';
+import 'package:family_guard/features/sos/services/sos_service.dart';
+import 'package:family_guard/core/providers/app_state_provider.dart';
+
+class FailingSOSService extends SOSService {
+  @override
+  Future<String?> triggerSOS({
+    required String circleId,
+    required String userId,
+    required String userName,
+    double? latitude,
+    double? longitude,
+    String address = 'Live Location Broadcast',
+  }) async => null;
+  @override
+  Future<bool> resolveSOS({
+    required String alertId,
+    required String userId,
+    String? circleId,
+  }) async => false;
+  @override
+  Stream<List<SOSAlert>> streamActiveSOSAlerts(String circleId) =>
+      const Stream.empty();
+}
+
+class TestSOSNotifier extends SOSNotifier {
+  TestSOSNotifier(super.ref) : super(service: FailingSOSService());
+  void restoreActiveForTest() {
+    state = SOSState(
+      isSelfSosActive: true,
+      activeAlertId: 'active',
+      sosStartTime: DateTime(2026),
+    );
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -42,7 +76,9 @@ void main() {
     });
 
     test('currentDurationSeconds and formatting compute properly', () {
-      final pastTime = DateTime.now().subtract(const Duration(minutes: 2, seconds: 15));
+      final pastTime = DateTime.now().subtract(
+        const Duration(minutes: 2, seconds: 15),
+      );
       final alert = SOSAlert(
         id: 'alert_2',
         senderId: 'user_123',
@@ -77,31 +113,68 @@ void main() {
   });
 
   group('Member Model SOS Property Unit Tests', () {
-    test('Member defaults to isSosActive = false and updates with copyWith', () {
-      final member = Member(
-        id: 'm1',
-        name: 'John',
-        avatar: '👨',
-        role: UserRole.parent,
-        address: 'Home',
-        lastSeen: DateTime.now(),
-        batteryLevel: 90,
-        speedMph: 0.0,
-        movementActivity: MovementActivity.stationary,
-      );
+    test(
+      'Member defaults to isSosActive = false and updates with copyWith',
+      () {
+        final member = Member(
+          id: 'm1',
+          name: 'John',
+          avatar: '👨',
+          role: UserRole.parent,
+          address: 'Home',
+          lastSeen: DateTime.now(),
+          batteryLevel: 90,
+          speedMph: 0.0,
+          movementActivity: MovementActivity.stationary,
+        );
 
-      expect(member.isSosActive, isFalse);
+        expect(member.isSosActive, isFalse);
 
-      final sosMember = member.copyWith(isSosActive: true);
-      expect(sosMember.isSosActive, isTrue);
-      expect(sosMember.id, equals('m1'));
+        final sosMember = member.copyWith(isSosActive: true);
+        expect(sosMember.isSosActive, isTrue);
+        expect(sosMember.id, equals('m1'));
 
-      final resetMember = sosMember.copyWith(isSosActive: false);
-      expect(resetMember.isSosActive, isFalse);
-    });
+        final resetMember = sosMember.copyWith(isSosActive: false);
+        expect(resetMember.isSosActive, isFalse);
+      },
+    );
   });
 
   group('SOSState & SOSNotifier State Management Unit Tests', () {
+    test(
+      'failed sending stays inactive and failed resolution preserves alert',
+      () async {
+        final container = ProviderContainer(
+          overrides: [sosProvider.overrideWith((ref) => TestSOSNotifier(ref))],
+        );
+        addTearDown(container.dispose);
+        container.read(appStateProvider.notifier).setUserId('user');
+        container.read(appStateProvider.notifier).setCircleId('circle');
+        final notifier = container.read(sosProvider.notifier);
+        expect(await notifier.triggerEmergency(), isFalse);
+        expect(container.read(sosProvider).isSelfSosActive, isFalse);
+        (notifier as TestSOSNotifier).restoreActiveForTest();
+        expect(await notifier.resolveEmergency(), isFalse);
+        expect(container.read(sosProvider).isSelfSosActive, isTrue);
+        expect(container.read(sosProvider).activeAlertId, 'active');
+      },
+    );
+    test(
+      'resolution clears nullable alert fields while omitted fields persist',
+      () {
+        final active = SOSState(
+          activeAlertId: 'a1',
+          sosStartTime: DateTime(2026),
+        );
+        expect(active.copyWith(activeDurationSeconds: 1).activeAlertId, 'a1');
+        final resolved = active.copyWith(
+          activeAlertId: null,
+          sosStartTime: null,
+        );
+        expect(resolved.activeAlertId, isNull);
+        expect(resolved.sosStartTime, isNull);
+      },
+    );
     test('Initial SOSState defaults are clean', () {
       const state = SOSState();
       expect(state.isSelfSosActive, isFalse);
@@ -140,20 +213,26 @@ void main() {
       expect(unhandled.senderName, equals('Tom'));
     });
 
-    test('dismissReceiverAlert adds alert ID to handledAlertIds in SOSNotifier', () {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+    test(
+      'dismissReceiverAlert adds alert ID to handledAlertIds in SOSNotifier',
+      () {
+        final container = ProviderContainer();
+        addTearDown(container.dispose);
 
-      final notifier = container.read(sosProvider.notifier);
-      expect(container.read(sosProvider).handledAlertIds, isEmpty);
+        final notifier = container.read(sosProvider.notifier);
+        expect(container.read(sosProvider).handledAlertIds, isEmpty);
 
-      notifier.dismissReceiverAlert('a123');
-      expect(container.read(sosProvider).handledAlertIds, contains('a123'));
-    });
+        notifier.dismissReceiverAlert('a123');
+        expect(container.read(sosProvider).handledAlertIds, contains('a123'));
+      },
+    );
 
-    test('SOSState.formattedActiveDuration formats minutes and seconds correctly', () {
-      const state = SOSState(activeDurationSeconds: 125);
-      expect(state.formattedActiveDuration, equals('02:05'));
-    });
+    test(
+      'SOSState.formattedActiveDuration formats minutes and seconds correctly',
+      () {
+        const state = SOSState(activeDurationSeconds: 125);
+        expect(state.formattedActiveDuration, equals('02:05'));
+      },
+    );
   });
 }

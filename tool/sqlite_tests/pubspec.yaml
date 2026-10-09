@@ -1,0 +1,16 @@
+name: family_guard_storage_tests
+publish_to: none
+environment:
+  sdk: ^3.11.5
+dependencies:
+  family_guard:
+    path: ../..
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  sqflite_common_ffi: 2.3.7
+  sqlite3: ^2.9.4
+dependency_overrides:
+  meta: ^1.18.0
+flutter:
+  uses-material-design: true

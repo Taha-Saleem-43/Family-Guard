@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../core/models/history_timeline_item.dart';
 import '../../../core/models/location_history_point.dart';
+import '../../../core/models/location_history_page.dart';
 import '../../../core/models/movement_activity.dart';
 import '../../../core/models/place.dart';
 import '../../../core/providers/app_state_provider.dart';
@@ -16,62 +17,140 @@ import '../../places/providers/places_provider.dart';
 final selectedHistoryTimeframeProvider = StateProvider<int>((ref) => 0);
 
 /// Selected member for history viewing (defaults to current user)
-final selectedHistoryMemberIdProvider = StateProvider<String?>((ref) => null);
+final selectedHistoryMemberIdProvider = StateProvider<String?>((ref) {
+  ref.watch(appStateProvider.select((state) => (state.userId, state.circleId)));
+  return null;
+});
 
 /// Firestore location service instance
-final firestoreLocationServiceProvider = Provider((ref) => FirestoreLocationService());
+final firestoreLocationServiceProvider = Provider(
+  (ref) => FirestoreLocationService(),
+);
 
 /// Cron purge status provider
 final historyCronStatusProvider = FutureProvider<DateTime?>((ref) async {
   return await HistoryCronService.instance.getLastPurgeDate();
 });
 
-/// Raw location history points provider
-final rawLocationHistoryProvider = FutureProvider<List<LocationHistoryPoint>>((ref) async {
-  final appState = ref.watch(appStateProvider);
-  final selectedMemberId = ref.watch(selectedHistoryMemberIdProvider) ?? appState.userId;
-  final timeframeIndex = ref.watch(selectedHistoryTimeframeProvider);
-  final service = ref.watch(firestoreLocationServiceProvider);
+/// Cursor pages retain a fixed time window and reject stale session results.
+final rawLocationHistoryProvider =
+    AsyncNotifierProvider<HistoryPager, List<LocationHistoryPoint>>(
+      HistoryPager.new,
+    );
 
-  if (selectedMemberId.isEmpty) return [];
-
-  // Start client cron purge check on history view
-  HistoryCronService.instance.runPurgeIfNeeded(uid: selectedMemberId);
-
-  final now = DateTime.now();
-  DateTime startDate;
-
-  switch (timeframeIndex) {
-    case 0: // Today
-      startDate = DateTime(now.year, now.month, now.day);
-      break;
-    case 1: // 7 Days
-      startDate = now.subtract(const Duration(days: 7));
-      break;
-    case 2: // 30 Days
-      startDate = now.subtract(const Duration(days: 30));
-      break;
-    default:
-      startDate = DateTime(now.year, now.month, now.day);
-  }
-
-  final remotePoints = await service.fetchLocationHistory(
-    uid: selectedMemberId,
-    startDate: startDate,
-    endDate: now,
-  );
-
-  if (remotePoints.isNotEmpty) {
-    return remotePoints;
-  }
-
-  // Fallback demo/mock data generation for testing/preview when no Firestore history exists
-  return _generateMockPoints(now, timeframeIndex);
+typedef _HistoryWindow = ({
+  String uid,
+  String? circleId,
+  DateTime start,
+  DateTime end,
+  FirestoreLocationService service,
 });
+
+class HistoryPager extends AsyncNotifier<List<LocationHistoryPoint>> {
+  _HistoryWindow? _window;
+  HistoryCursor? _cursor;
+  int _generation = 0;
+  bool _disposed = false;
+  bool hasMore = false;
+  bool loadingMore = false;
+  String? moreError;
+
+  @override
+  Future<List<LocationHistoryPoint>> build() async {
+    final generation = ++_generation;
+    _disposed = false;
+    ref.onDispose(() {
+      _disposed = true;
+      ++_generation;
+    });
+    _cursor = null;
+    _window = null;
+    hasMore = false;
+    loadingMore = false;
+    moreError = null;
+    final uid = ref.watch(appStateProvider.select((state) => state.userId));
+    final circleId = ref.watch(
+      appStateProvider.select((state) => state.circleId),
+    );
+    final role = ref.watch(appStateProvider.select((state) => state.role));
+    final selection = ref.watch(selectedHistoryMemberIdProvider);
+    final selectedMemberId = role == UserRole.parent ? selection ?? uid : uid;
+    final timeframe = ref.watch(selectedHistoryTimeframeProvider);
+    final service = ref.watch(firestoreLocationServiceProvider);
+    if (selectedMemberId.isEmpty) return [];
+    final now = DateTime.now();
+    final start = timeframe == 1
+        ? now.subtract(const Duration(days: 7))
+        : timeframe == 2
+        ? now.subtract(const Duration(days: 30))
+        : DateTime(now.year, now.month, now.day);
+    final window = (
+      uid: selectedMemberId,
+      circleId: selectedMemberId == uid ? null : circleId,
+      start: start,
+      end: now,
+      service: service,
+    );
+    _window = window;
+    final page = await service.fetchHistoryPage(
+      uid: window.uid,
+      circleId: window.circleId,
+      startDate: window.start,
+      endDate: window.end,
+    );
+    if (_disposed || generation != _generation) return [];
+    _cursor = page.nextCursor;
+    hasMore = page.hasMore;
+    return page.points;
+  }
+
+  Future<void> loadMore() async {
+    final window = _window;
+    final cursor = _cursor;
+    if (_disposed ||
+        window == null ||
+        cursor == null ||
+        !hasMore ||
+        loadingMore ||
+        state.isLoading ||
+        state.hasError) {
+      return;
+    }
+    final generation = _generation;
+    final current = state.requireValue;
+    loadingMore = true;
+    moreError = null;
+    state = AsyncData(List.of(current));
+    try {
+      final page = await window.service.fetchHistoryPage(
+        uid: window.uid,
+        circleId: window.circleId,
+        startDate: window.start,
+        endDate: window.end,
+        cursor: cursor,
+      );
+      if (_disposed || generation != _generation) return;
+      _cursor = page.nextCursor;
+      hasMore = page.hasMore;
+      loadingMore = false;
+      final byId = {for (final point in current) point.id: point};
+      for (final point in page.points) {
+        byId[point.id] = point;
+      }
+      state = AsyncData(byId.values.toList());
+    } catch (_) {
+      if (_disposed || generation != _generation) return;
+      loadingMore = false;
+      moreError = 'Could not load older history. Try again.';
+      state = AsyncData(List.of(current));
+    }
+  }
+}
 
 /// Computes aggregated timeline items (Stays & Trips) from history points, matching saved places
 final historyTimelineProvider = Provider<List<HistoryTimelineItem>>((ref) {
   final asyncPoints = ref.watch(rawLocationHistoryProvider);
+  if (asyncPoints.isLoading || asyncPoints.hasError) return [];
   final placesAsync = ref.watch(circlePlacesStreamProvider);
   final places = placesAsync.value ?? <Place>[];
 
@@ -85,9 +164,11 @@ final historyTimelineProvider = Provider<List<HistoryTimelineItem>>((ref) {
 /// Route polyline points for the map header
 final historyRoutePolylineProvider = Provider<List<LatLng>>((ref) {
   final asyncPoints = ref.watch(rawLocationHistoryProvider);
+  if (asyncPoints.isLoading || asyncPoints.hasError) return [];
 
   return asyncPoints.when(
-    data: (points) => points.map((p) => LatLng(p.latitude, p.longitude)).toList(),
+    data: (points) =>
+        points.map((p) => LatLng(p.latitude, p.longitude)).toList(),
     loading: () => [],
     error: (err, stack) => [],
   );
@@ -126,17 +207,26 @@ List<HistoryTimelineItem> _aggregatePointsToTimeline(
     final start = startPt.timestamp;
     final end = endPt.timestamp;
     final diffMinutes = end.difference(start).inMinutes.abs();
-    final durationStr = diffMinutes > 60 ? '${(diffMinutes / 60).toStringAsFixed(1)} hrs' : '${diffMinutes.clamp(5, 59)} mins';
-    final timeRangeStr = '${DateFormat('h:mm a').format(start)} - ${DateFormat('h:mm a').format(end)}';
+    final durationStr = diffMinutes > 60
+        ? '${(diffMinutes / 60).toStringAsFixed(1)} hrs'
+        : '$diffMinutes mins';
+    final timeRangeStr =
+        '${DateFormat('h:mm a').format(start)} - ${DateFormat('h:mm a').format(end)}';
 
     if (activity == MovementActivity.stationary) {
-      final matchedPlace = findMatchingSavedPlace(startPt.latitude, startPt.longitude);
+      final matchedPlace = findMatchingSavedPlace(
+        startPt.latitude,
+        startPt.longitude,
+      );
 
       final title = matchedPlace != null
           ? 'Stayed at ${matchedPlace.name}'
-          : (startPt.placeName != null ? 'Stayed at ${startPt.placeName}' : 'Stationary Stay');
+          : (startPt.placeName != null
+                ? 'Stayed at ${startPt.placeName}'
+                : 'Stationary Stay');
 
-      final address = matchedPlace?.address ??
+      final address =
+          matchedPlace?.address ??
           startPt.address ??
           '${startPt.latitude.toStringAsFixed(4)}, ${startPt.longitude.toStringAsFixed(4)}';
 
@@ -155,33 +245,53 @@ List<HistoryTimelineItem> _aggregatePointsToTimeline(
           icon: icon,
           color: color,
           activity: MovementActivity.stationary,
-          polylinePoints: groupPoints.map((p) => LatLng(p.latitude, p.longitude)).toList(),
+          polylinePoints: groupPoints
+              .map((p) => LatLng(p.latitude, p.longitude))
+              .toList(),
         ),
       );
     } else {
       final isDriving = activity == MovementActivity.driving;
-      final avgSpeed = groupPoints.fold(0.0, (sum, p) => sum + p.speedMph) / groupPoints.length;
+      final avgSpeed =
+          groupPoints.fold(0.0, (sum, p) => sum + p.speedMph) /
+          groupPoints.length;
 
       items.add(
         HistoryTimelineItem(
           id: startPt.id,
           type: TimelineItemType.trip,
-          title: isDriving ? 'Driving Trip (${avgSpeed.toStringAsFixed(0)} mph)' : 'Walking Trip',
-          address: 'From ${startPt.latitude.toStringAsFixed(3)}, ${startPt.longitude.toStringAsFixed(3)} to ${endPt.latitude.toStringAsFixed(3)}, ${endPt.longitude.toStringAsFixed(3)}',
+          title: isDriving
+              ? 'Driving Trip (${avgSpeed.toStringAsFixed(0)} mph)'
+              : 'Walking Trip',
+          address:
+              'From ${startPt.latitude.toStringAsFixed(3)}, ${startPt.longitude.toStringAsFixed(3)} to ${endPt.latitude.toStringAsFixed(3)}, ${endPt.longitude.toStringAsFixed(3)}',
           startTime: start,
           endTime: end,
           durationText: '$durationStr • $timeRangeStr',
-          icon: isDriving ? Icons.directions_car_rounded : Icons.directions_walk_rounded,
+          icon: isDriving
+              ? Icons.directions_car_rounded
+              : Icons.directions_walk_rounded,
           color: isDriving ? AppColors.teal : AppColors.pinWarning,
           activity: activity,
-          distanceMiles: (diffMinutes * 0.4).clamp(0.5, 25.0),
-          polylinePoints: groupPoints.map((p) => LatLng(p.latitude, p.longitude)).toList(),
+          distanceMiles: List.generate(
+            groupPoints.length - 1,
+            (i) => const Distance().as(
+              LengthUnit.Mile,
+              LatLng(groupPoints[i].latitude, groupPoints[i].longitude),
+              LatLng(groupPoints[i + 1].latitude, groupPoints[i + 1].longitude),
+            ),
+          ).fold<double>(0.0, (total, distance) => total + distance),
+          polylinePoints: groupPoints
+              .map((p) => LatLng(p.latitude, p.longitude))
+              .toList(),
         ),
       );
     }
   }
 
-  for (final pt in points) {
+  final chronological = [...points]
+    ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+  for (final pt in chronological) {
     if (currentActivity == null || currentActivity != pt.movementActivity) {
       finalizeGroup();
       currentGroupStart = pt;
@@ -197,38 +307,4 @@ List<HistoryTimelineItem> _aggregatePointsToTimeline(
 
   finalizeGroup();
   return items;
-}
-
-List<LocationHistoryPoint> _generateMockPoints(DateTime now, int timeframeIndex) {
-  const baseLat = 33.6844;
-  const baseLng = 73.0479;
-
-  final points = <LocationHistoryPoint>[];
-  final count = timeframeIndex == 0 ? 6 : (timeframeIndex == 1 ? 12 : 20);
-
-  for (int i = 0; i < count; i++) {
-    final offsetHours = i * (timeframeIndex == 0 ? 2 : (timeframeIndex == 1 ? 12 : 36));
-    final timestamp = now.subtract(Duration(hours: offsetHours));
-    final activity = i % 3 == 0
-        ? MovementActivity.stationary
-        : (i % 3 == 1 ? MovementActivity.driving : MovementActivity.walking);
-
-    points.add(
-      LocationHistoryPoint(
-        id: 'mock_$i',
-        latitude: baseLat + (i * 0.003),
-        longitude: baseLng + (i * 0.004),
-        speedMph: activity == MovementActivity.driving ? 32.5 : (activity == MovementActivity.walking ? 3.2 : 0.0),
-        movementActivity: activity,
-        timestamp: timestamp,
-        expireAt: timestamp.add(const Duration(days: 30)),
-        address: activity == MovementActivity.stationary
-            ? (i == 0 ? 'Home Base, Sector F-7' : 'Office Hub, Blue Area')
-            : 'En route via Main Boulevard',
-        placeName: activity == MovementActivity.stationary ? (i == 0 ? 'Home' : 'Work Place') : null,
-      ),
-    );
-  }
-
-  return points;
 }

@@ -1,137 +1,164 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import '../models/sos_alert.dart';
+import 'sos_request_store.dart';
+import '../models/push_delivery_summary.dart';
+
+typedef SOSCallable =
+    Future<Map<String, dynamic>> Function(
+      String name,
+      Map<String, dynamic> data,
+    );
 
 class SOSService {
   final FirebaseFirestore? _firestore;
+  final SOSCallable? _call;
+  final SOSRequestStore _requests;
+  SOSService({
+    FirebaseFirestore? firestore,
+    SOSCallable? callable,
+    SOSRequestStore? requests,
+  }) : _firestore =
+           firestore ??
+           (Firebase.apps.isNotEmpty ? FirebaseFirestore.instance : null),
+       _call = callable ?? (Firebase.apps.isNotEmpty ? _firebaseCall : null),
+       _requests = requests ?? PreferencesSOSRequestStore();
 
-  SOSService({FirebaseFirestore? firestore})
-      : _firestore = firestore ?? (Firebase.apps.isNotEmpty ? FirebaseFirestore.instance : null);
+  static Future<Map<String, dynamic>> _firebaseCall(
+    String name,
+    Map<String, dynamic> data,
+  ) async {
+    final result = await FirebaseFunctions.instance
+        .httpsCallable(name)
+        .call(data);
+    return Map<String, dynamic>.from(result.data as Map);
+  }
 
-  /// Triggers an emergency SOS alert in Firestore
   Future<String?> triggerSOS({
     required String circleId,
     required String userId,
     required String userName,
     double? latitude,
     double? longitude,
-    String address = 'Live Location Broadcast',
+    String address = 'Location unavailable',
   }) async {
-    if (_firestore == null || circleId.isEmpty || userId.isEmpty) return null;
-
-    final now = DateTime.now();
-
+    if (_call == null || circleId.isEmpty || userId.isEmpty) return null;
     try {
-      // 1. Create SOS Alert record in sos_alerts collection
-      final docRef = await _firestore.collection('sos_alerts').add({
-        'circleId': circleId,
-        'senderId': userId,
-        'senderName': userName,
-        'latitude': latitude,
-        'longitude': longitude,
-        'address': address,
-        'timestamp': now.toIso8601String(),
-        'status': 'active',
-        'resolvedAt': null,
-        'resolvedBy': null,
-        'durationSeconds': 0,
-      });
-
-      // 2. Update user status to isSosActive = true
-      await _firestore.collection('users').doc(userId).set({
-        'isSosActive': true,
-        'activeSosId': docRef.id,
-        'lastSosAt': now.toIso8601String(),
-      }, SetOptions(merge: true));
-
-      debugPrint('[SOSService] SOS triggered successfully: ${docRef.id}');
-      return docRef.id;
-    } catch (e) {
-      debugPrint('[SOSService] Error triggering SOS: $e');
-      return null;
+      // Resolution on another device can leave a resolved key in this device's store.
+      // A deliberate send may discard that old key and create one new request.
+      for (var attempt = 0; attempt < 2; attempt++) {
+        final requestId = await _requests.getOrCreate(userId, circleId);
+        final result = await _call('triggerSos', {
+          'expectedUid': userId,
+          'requestId': requestId,
+          'circleId': circleId,
+          'latitude': latitude,
+          'longitude': longitude,
+          'address': address,
+        });
+        final alertId = result['alertId'];
+        if (result['status'] == 'active' &&
+            alertId is String &&
+            alertId.isNotEmpty) {
+          return alertId;
+        }
+        if (result['status'] != 'resolved') return null;
+        await _requests.clear(userId, circleId);
+      }
+    } catch (error) {
+      // A timeout may arrive after the server committed; retain the request key.
+      debugPrint('[SOSService] Sending failed: $error');
     }
+    return null;
   }
 
-  /// Resolves an active SOS alert in Firestore and calculates total duration
   Future<bool> resolveSOS({
     required String alertId,
     required String userId,
     String? circleId,
   }) async {
-    if (_firestore == null || alertId.isEmpty) return false;
-
-    final now = DateTime.now();
-
+    if (_call == null ||
+        alertId.isEmpty ||
+        userId.isEmpty ||
+        circleId == null ||
+        circleId.isEmpty) {
+      return false;
+    }
     try {
-      // Fetch document to calculate exact duration
-      final docSnap = await _firestore.collection('sos_alerts').doc(alertId).get();
-      int durationSeconds = 0;
-      if (docSnap.exists) {
-        final data = docSnap.data();
-        if (data != null && data['timestamp'] != null) {
-          try {
-            final start = DateTime.parse(data['timestamp'] as String);
-            durationSeconds = now.difference(start).inSeconds;
-          } catch (_) {}
-        }
-      }
-
-      // Update SOS record
-      await _firestore.collection('sos_alerts').doc(alertId).update({
-        'status': 'resolved',
-        'resolvedAt': now.toIso8601String(),
-        'resolvedBy': userId,
-        'durationSeconds': durationSeconds > 0 ? durationSeconds : 1,
+      final result = await _call('resolveSos', {
+        'alertId': alertId,
+        'expectedUid': userId,
       });
-
-      // Clear user's active SOS flag
-      if (userId.isNotEmpty) {
-        await _firestore.collection('users').doc(userId).set({
-          'isSosActive': false,
-          'activeSosId': null,
-        }, SetOptions(merge: true));
+      if (result['resolved'] != true || result['alertId'] != alertId) {
+        return false;
       }
-
-      debugPrint('[SOSService] SOS resolved successfully: $alertId (Duration: ${durationSeconds}s)');
+      // Local cleanup failure does not undo confirmed server resolution.
+      try {
+        await _requests.clear(userId, circleId);
+      } catch (error) {
+        debugPrint('[SOSService] Request cleanup failed: $error');
+      }
       return true;
-    } catch (e) {
-      debugPrint('[SOSService] Error resolving SOS: $e');
+    } catch (error) {
+      debugPrint('[SOSService] Resolution failed: $error');
       return false;
     }
   }
 
-  /// Real-time stream of active SOS alerts for a circle
   Stream<List<SOSAlert>> streamActiveSOSAlerts(String circleId) {
     if (_firestore == null || circleId.isEmpty) return Stream.value([]);
-
     return _firestore
         .collection('sos_alerts')
         .where('circleId', isEqualTo: circleId)
         .where('status', isEqualTo: 'active')
-        .snapshots()
-        .map((snapshot) {
-      return snapshot.docs
-          .map((doc) => SOSAlert.fromMap(doc.id, doc.data()))
-          .toList();
-    });
+        .snapshots(includeMetadataChanges: true)
+        .where(
+          (snapshot) =>
+              !snapshot.metadata.isFromCache &&
+              !snapshot.metadata.hasPendingWrites,
+        )
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => SOSAlert.fromMap(doc.id, doc.data()))
+              .toList(),
+        );
   }
 
-  /// Stream of all circle SOS history (both active and resolved)
   Stream<List<SOSAlert>> streamCircleSOSHistory(String circleId) {
     if (_firestore == null || circleId.isEmpty) return Stream.value([]);
-
     return _firestore
         .collection('sos_alerts')
         .where('circleId', isEqualTo: circleId)
+        .orderBy('timestamp', descending: true)
+        .limit(100)
         .snapshots()
-        .map((snapshot) {
-      final list = snapshot.docs
-          .map((doc) => SOSAlert.fromMap(doc.id, doc.data()))
-          .toList();
-      // Sort newest first
-      list.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-      return list;
-    });
+        .map(
+          (snapshot) => snapshot.docs
+              .map((doc) => SOSAlert.fromMap(doc.id, doc.data()))
+              .toList(),
+        );
+  }
+
+  Stream<PushDeliverySummary> streamPushDeliverySummary(
+    String alertId,
+    String circleId,
+  ) {
+    if (_firestore == null || alertId.isEmpty || circleId.isEmpty) {
+      return Stream.value(const PushDeliverySummary());
+    }
+    return _firestore
+        .collection('sosPushDeliveries')
+        .where('alertId', isEqualTo: alertId)
+        .where('circleId', isEqualTo: circleId)
+        .limit(200)
+        .snapshots(includeMetadataChanges: true)
+        .where((snapshot) => !snapshot.metadata.isFromCache)
+        .map(
+          (snapshot) => PushDeliverySummary.fromJobs(
+            snapshot.docs.map((doc) => doc.data()),
+          ),
+        );
   }
 }

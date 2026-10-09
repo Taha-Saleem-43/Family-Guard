@@ -9,9 +9,7 @@ import '../../../core/providers/app_state_provider.dart';
 import '../../../core/providers/member_status_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../places/providers/places_provider.dart';
-import '../../sos/presentation/widgets/sos_overlay.dart';
-import '../../sos/presentation/widgets/sos_receiver_dialog.dart';
-import '../../sos/providers/sos_provider.dart';
+import '../../sos/presentation/widgets/emergency_host.dart';
 import 'widgets/member_detail_sheet.dart';
 
 class MapScreen extends ConsumerStatefulWidget {
@@ -23,7 +21,6 @@ class MapScreen extends ConsumerStatefulWidget {
 
 class _MapScreenState extends ConsumerState<MapScreen> {
   final MapController _mapController = MapController();
-  bool _showSOS = false;
   String? _selectedMemberId = 'm_self';
 
   LatLng _getInitialCenter(List<Member> members) {
@@ -41,7 +38,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final isParent = appState.role == UserRole.parent;
     final allMembers = ref.watch(memberStateProvider);
     final selectedFilter = ref.watch(selectedActivityFilterProvider);
-    final sosState = ref.watch(sosProvider);
 
     // Watch Saved Places for the circle
     final placesAsync = ref.watch(circlePlacesStreamProvider);
@@ -59,7 +55,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ? visibleMembers
         : visibleMembers.where((m) => m.movementActivity == selectedFilter).toList();
 
-    final unhandledAlert = sosState.unhandledCircleEmergency;
 
     return Stack(
       children: [
@@ -187,7 +182,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
           right: 16,
           bottom: isParent ? 275 : 120,
           child: GestureDetector(
-            onTap: () => setState(() => _showSOS = true),
+            onTap: () => ref.read(sosComposerProvider.notifier).state = true,
             child: Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
@@ -276,17 +271,6 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
           ),
 
-        // ── SOS Overlay (Sender Trigger View) ────────────────────────
-        if (_showSOS || sosState.isSelfSosActive)
-          SOSOverlay(
-            onCancel: () => setState(() => _showSOS = false),
-          ),
-
-        // ── SOS Receiver Dialog (Incoming Circle Emergency) ───────────
-        if (unhandledAlert != null && !_showSOS && !sosState.isSelfSosActive)
-          SOSReceiverDialog(
-            alert: unhandledAlert,
-          ),
       ],
     );
   }
@@ -498,7 +482,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       Icon(batIcon, size: 10, color: isSos ? Colors.white : batColor),
                       const SizedBox(width: 2),
                       Text(
-                        '${member.batteryLevel}%',
+                        BatteryHelper.label(member.batteryLevel),
                         style: TextStyle(
                           fontSize: 8,
                           fontWeight: FontWeight.w900,
@@ -572,7 +556,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       Icon(batIcon, size: 13, color: batColor),
                       const SizedBox(width: 3),
                       Text(
-                        '${member.batteryLevel}%',
+                        BatteryHelper.label(member.batteryLevel),
                         style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: batColor),
                       ),
                     ],

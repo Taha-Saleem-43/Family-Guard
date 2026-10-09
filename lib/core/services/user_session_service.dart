@@ -1,10 +1,62 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../features/sos/services/sos_dismissal_store.dart';
 
 class UserSessionService {
   static const String _activeUidKey = 'fg_active_user_uid';
-  static String _key(String uid, String suffix) => 'fg_user_session_${uid}_$suffix';
+  static String _key(String uid, String suffix) =>
+      'fg_user_session_${uid}_$suffix';
 
-  /// Save active session data including JWT token and user metadata
+  static Future<void> deleteUserSession(String uid) async {
+    await PreferencesSOSDismissalStore.drainPendingWrites();
+    final prefs = await SharedPreferences.getInstance();
+    if (prefs.getString('fg_push_token_account_uid') == uid &&
+        !await prefs.remove('fg_push_token_account_uid')) {
+      throw StateError('Could not clear local device account data.');
+    }
+    if (prefs.getString(_activeUidKey) == uid) {
+      await prefs.remove(_activeUidKey);
+    }
+    final encoded = Uri.encodeComponent(uid);
+    bool ownsSosKey(String key, String prefix) {
+      if (!key.startsWith(prefix)) return false;
+      final rest = key.substring(prefix.length);
+      final separator = rest.lastIndexOf('.');
+      return separator >= 0 && rest.substring(0, separator) == encoded;
+    }
+
+    final sessionKeys = {
+      for (final suffix in [
+        'isLoggedIn',
+        'role',
+        'circleId',
+        'email',
+        'userName',
+        'circleName',
+        'childCode',
+        'parentCode',
+        'idToken',
+        'tokenSavedAt',
+        'sharingConsent',
+      ])
+        _key(uid, suffix),
+    };
+    final keys = prefs
+        .getKeys()
+        .where(
+          (key) =>
+              sessionKeys.contains(key) ||
+              ownsSosKey(key, 'sos.pending.') ||
+              ownsSosKey(key, 'sos.dismissed.'),
+        )
+        .toList();
+    for (final key in keys) {
+      if (!await prefs.remove(key)) {
+        throw StateError('Could not clear local account data.');
+      }
+    }
+  }
+
+  /// Cache display metadata only. Firebase Auth owns credential persistence.
   static Future<void> saveUserSession({
     required String uid,
     required String role,
@@ -37,10 +89,9 @@ class UserSessionService {
       if (parentCode != null && parentCode.isNotEmpty) {
         await prefs.setString(_key(uid, 'parentCode'), parentCode);
       }
-      if (idToken != null && idToken.isNotEmpty) {
-        await prefs.setString(_key(uid, 'idToken'), idToken);
-        await prefs.setInt(_key(uid, 'tokenSavedAt'), DateTime.now().millisecondsSinceEpoch);
-      }
+      // Remove tokens written by earlier app versions; never store a new JWT here.
+      await prefs.remove(_key(uid, 'idToken'));
+      await prefs.remove(_key(uid, 'tokenSavedAt'));
     } catch (_) {}
   }
 
@@ -63,8 +114,6 @@ class UserSessionService {
           'circleName': prefs.getString(_key(uid, 'circleName')),
           'childCode': prefs.getString(_key(uid, 'childCode')),
           'parentCode': prefs.getString(_key(uid, 'parentCode')),
-          'idToken': prefs.getString(_key(uid, 'idToken')),
-          'tokenSavedAt': prefs.getInt(_key(uid, 'tokenSavedAt')),
         };
       }
     } catch (_) {}
@@ -101,7 +150,7 @@ class UserSessionService {
       await prefs.remove(_key(uid, 'parentCode'));
       await prefs.remove(_key(uid, 'idToken'));
       await prefs.remove(_key(uid, 'tokenSavedAt'));
+      await prefs.remove(_key(uid, 'sharingConsent'));
     } catch (_) {}
   }
 }
-

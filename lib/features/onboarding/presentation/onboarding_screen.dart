@@ -3,14 +3,17 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/app_state_provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/services/sharing_consent_service.dart';
 import '../../auth/domain/circle_model.dart';
 import '../../auth/providers/auth_providers.dart';
+import '../../settings/presentation/account_deletion_control.dart';
 import 'permission_gate_screen.dart';
 
 enum OnboardingStep { splash, carousel, auth, role, createCircle, circleCreated, joinCircle, childConsent, permissions }
 
 class OnboardingScreen extends ConsumerStatefulWidget {
-  const OnboardingScreen({super.key});
+  const OnboardingScreen({super.key, this.consentService});
+  final SharingConsentService? consentService;
 
   @override
   ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -33,6 +36,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   final _inviteCodeController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    final account = ref.read(appStateProvider);
+    if (account.userId.isNotEmpty) {
+      _pendingRole = account.role;
+      _currentStep = account.circleId.isEmpty ? OnboardingStep.role
+        : account.role == UserRole.child ? OnboardingStep.childConsent : OnboardingStep.permissions;
+    }
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
     _emailController.dispose();
@@ -46,19 +60,19 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     {
       'icon': Icons.my_location_rounded,
       'title': "See your family's location",
-      'body': 'Know where everyone is, updated in real time — even when the app is closed.',
+      'body': 'See recent shared locations. Background updates depend on permissions, connectivity and Android settings.',
       'gradient': [const Color(0xFF3B82F6), const Color(0xFF2563EB)],
     },
     {
       'icon': Icons.notifications_active_rounded,
       'title': 'Get alerts when they arrive',
-      'body': 'Set up Places like Home and School and get notified the moment someone arrives or leaves.',
+      'body': 'Save Places like Home and School to see confirmed arrival and departure activity. Notifications can be delayed.',
       'gradient': [const Color(0xFF0D9488), const Color(0xFF0F766E)],
     },
     {
       'icon': Icons.sos_rounded,
       'title': 'SOS for emergencies',
-      'body': 'One tap sends an emergency alert with a live location to every family member instantly.',
+      'body': 'Send an SOS to your family circle when connected. Check delivery status in the app; notifications may be delayed.',
       'gradient': [const Color(0xFF8B5CF6), const Color(0xFF7C3AED)],
     },
   ];
@@ -75,9 +89,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         final displayName = _nameController.text.trim();
         final account = await authService.signUp(
           email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
+          password: _passwordController.text,
           displayName: displayName,
         );
+        if (!mounted) return;
         ref.read(appStateProvider.notifier).setUserSession(
           userId: account.uid,
           circleId: '',
@@ -88,8 +103,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       } else {
         final account = await authService.signIn(
           email: _emailController.text.trim(),
-          password: _passwordController.text.trim(),
+          password: _passwordController.text,
         );
+        if (!mounted) return;
         ref.read(appStateProvider.notifier).setUserSession(
           userId: account.uid,
           circleId: account.circleId ?? '',
@@ -98,19 +114,23 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         );
         // Signed-in user — check if they already have a circle
         if (account.circleId != null && account.circleId!.isNotEmpty) {
-          // Already in a circle — go straight to main app
-          ref.read(appStateProvider.notifier).completeOnboarding(
-            account.role == UserRole.parent ? UserRole.parent : UserRole.child,
-          );
+          if (account.role == UserRole.child) {
+            setState(() {
+              _pendingRole = UserRole.child;
+              _currentStep = OnboardingStep.childConsent;
+            });
+          } else {
+            ref.read(appStateProvider.notifier).completeOnboarding(UserRole.parent);
+          }
         } else {
           // Signed in but no circle yet — let them create or join
           setState(() => _currentStep = OnboardingStep.role);
         }
       }
     } catch (e) {
-      setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));
+      if (mounted) { setState(() => _errorMessage = e.toString().replaceAll('Exception: ', '')); }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) { setState(() => _isLoading = false); }
     }
   }
 
@@ -127,8 +147,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
     final authService = ref.read(authServiceProvider);
     try {
+      final uid = authService.currentUser?.uid;
+      if (uid == null) throw Exception('Please sign in.');
       final circle = await authService.createCircle(circleName: circleName);
-      final uid = authService.currentUser?.uid ?? 'user_${DateTime.now().millisecondsSinceEpoch}';
+      if (!mounted) return;
       ref.read(appStateProvider.notifier).setUserSession(
         userId: uid,
         circleId: circle.id,
@@ -143,9 +165,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         _currentStep = OnboardingStep.circleCreated;
       });
     } catch (e) {
-      setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));
+      if (mounted) { setState(() => _errorMessage = e.toString().replaceAll('Exception: ', '')); }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) { setState(() => _isLoading = false); }
     }
   }
 
@@ -163,6 +185,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final authService = ref.read(authServiceProvider);
     try {
       final account = await authService.joinCircleByCode(inviteCode: code);
+      if (!mounted) return;
       // Role is assigned server-side from the invite code — never user-selected.
       final role = account.role == UserRole.child ? UserRole.child : UserRole.parent;
       ref.read(appStateProvider.notifier).setUserSession(
@@ -173,19 +196,45 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       );
       setState(() {
         _pendingRole = role;
-        // Children already saw the consent screen; both roles go to permissions.
-        _currentStep = OnboardingStep.permissions;
+        _currentStep = role == UserRole.child
+            ? OnboardingStep.childConsent : OnboardingStep.permissions;
       });
     } catch (e) {
-      setState(() => _errorMessage = e.toString().replaceAll('Exception: ', ''));
+      if (mounted) { setState(() => _errorMessage = e.toString().replaceAll('Exception: ', '')); }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) { setState(() => _isLoading = false); }
+    }
+  }
+
+  Future<void> _acceptExistingSharing() async {
+    if (_isLoading) return;
+    final account = ref.read(appStateProvider);
+    setState(() => _isLoading = true);
+    try {
+      await (widget.consentService ?? SharingConsentService()).accept(account.userId, account.circleId);
+      if (!mounted || ref.read(appStateProvider).userId != account.userId ||
+          ref.read(appStateProvider).circleId != account.circleId) {
+        return;
+      }
+      setState(() => _currentStep = OnboardingStep.permissions);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not save consent. Please try again.'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      bottomNavigationBar: ref.watch(appStateProvider).userId.isNotEmpty &&
+              [OnboardingStep.role, OnboardingStep.createCircle, OnboardingStep.joinCircle].contains(_currentStep)
+          ? const SafeArea(child: Padding(padding: EdgeInsets.symmetric(horizontal: 24), child: AccountDeletionControl()))
+          : null,
       body: SafeArea(
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
@@ -953,6 +1002,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   // 6. Child Consent Screen (Child)
   Widget _buildChildConsent() {
+    final hasCircle = ref.watch(appStateProvider.select((state) => state.circleId)).isNotEmpty;
     return Container(
       key: const ValueKey('childConsent'),
       color: AppColors.bg,
@@ -965,13 +1015,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             icon: const Icon(Icons.arrow_back_rounded, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Before you join',
+          Text(
+            hasCircle ? 'Before sharing your location' : 'Before you join',
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
           ),
           const SizedBox(height: 4),
-          const Text(
-            "Here's exactly what happens when you join a Circle as a child member.",
+          Text(
+            hasCircle ? 'Review what location sharing allows in your current circle.' : "Here's what happens when you join a Circle as a child member.",
             style: TextStyle(fontSize: 14, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
           ),
           const SizedBox(height: 20),
@@ -984,19 +1034,19 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       padding: const EdgeInsets.all(16),
                       child: Column(
                         children: [
-                          _buildConsentRow(Icons.location_on_rounded, 'Location always shared', 'Your parent will see your location continuously, including when the app is in the background or screen is off.'),
+                          _buildConsentRow(Icons.location_on_rounded, 'Location sharing', 'With your permission, parents in your circle receive your recent location, including in the background when Android allows it.'),
                           const Divider(height: 24),
-                          _buildConsentRow(Icons.notifications_active_rounded, 'Persistent notification', "You'll always see a notification in your status bar while location sharing is active."),
+                          _buildConsentRow(Icons.notifications_active_rounded, 'Tracking notice', 'Android shows a tracking notice while sharing is active. Its placement depends on your notification settings.'),
                           const Divider(height: 24),
-                          _buildConsentRow(Icons.history_rounded, 'History is recorded', 'Your location history is stored so your parent can review past activity.'),
+                          _buildConsentRow(Icons.history_rounded, 'History is recorded', 'Recent location history is stored for your circle’s parents to review. It is scheduled for deletion after 30 days.'),
                           const Divider(height: 24),
-                          _buildConsentRow(Icons.sos_rounded, 'You are in control of SOS', 'The SOS button is always available to you — one tap alerts every member instantly.'),
+                          _buildConsentRow(Icons.sos_rounded, 'You are in control of SOS', 'Use SOS to ask your circle for help. Sending requires a connection, and alerts may be delayed.'),
                         ],
                       ),
                     ),
                   ),
                   const SizedBox(height: 16),
-                  Container(
+                  if (!hasCircle) Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: AppColors.primaryLight,
@@ -1032,7 +1082,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: _isLoading ? null : _handleJoinCircle,
+                      onPressed: _isLoading ? null : hasCircle
+                          ? _acceptExistingSharing
+                          : _handleJoinCircle,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.teal,
                         padding: const EdgeInsets.symmetric(vertical: 18),
@@ -1040,8 +1092,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                       ),
                       child: _isLoading
                           ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                          : const Text(
-                              'I understand — Join Circle',
+                          : Text(
+                              hasCircle ? 'I understand — Continue' : 'I understand — Join Circle',
                               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
                             ),
                     ),

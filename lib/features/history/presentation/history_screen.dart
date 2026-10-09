@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 import '../../../core/models/history_timeline_item.dart';
 import '../../../core/providers/app_state_provider.dart';
 import '../../../core/providers/member_status_provider.dart';
-import '../../../core/services/history_cron_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../providers/history_provider.dart';
 
@@ -20,6 +19,19 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   final MapController _mapController = MapController();
 
   @override
+  void dispose() {
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  Widget _scrollableStatus({required Widget child}) => LayoutBuilder(
+    builder: (context, constraints) => ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      children: [SizedBox(height: constraints.maxHeight, child: Center(child: child))],
+    ),
+  );
+
+  @override
   Widget build(BuildContext context) {
     final selectedTab = ref.watch(selectedHistoryTimeframeProvider);
     final members = ref.watch(memberStateProvider);
@@ -27,12 +39,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final selectedMemberId = ref.watch(selectedHistoryMemberIdProvider) ?? appState.userId;
     final timelineItems = ref.watch(historyTimelineProvider);
     final polylinePoints = ref.watch(historyRoutePolylineProvider);
-    final cronStatus = ref.watch(historyCronStatusProvider);
+    final history = ref.watch(rawLocationHistoryProvider);
+    final pager = ref.read(rawLocationHistoryProvider.notifier);
+    final canSelectMembers = appState.role == UserRole.parent && members.length > 1;
 
-    final selectedMember = members.firstWhere(
-      (m) => m.id == selectedMemberId || m.id == 'm_self',
-      orElse: () => members.isNotEmpty ? members.first : members.first,
-    );
+    final selectedMember = members.where(
+      (m) => m.id == selectedMemberId || m.id == 'm_self').firstOrNull
+      ?? members.firstOrNull;
 
     return Scaffold(
       backgroundColor: AppColors.bg,
@@ -41,15 +54,19 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: () async {
-          ref.invalidate(rawLocationHistoryProvider);
-          await HistoryCronService.instance.runPurgeIfNeeded(uid: selectedMemberId);
+          try {
+            ref.invalidate(rawLocationHistoryProvider);
+            await ref.read(rawLocationHistoryProvider.future);
+          } catch (_) {
+            // The history panel displays the failure and offers a retry.
+          }
         },
         child: Column(
           children: [
             const SizedBox(height: 12),
 
             // Member Selector Bar (compact horizontal chips)
-            if (members.length > 1)
+            if (canSelectMembers)
               SizedBox(
                 height: 40,
                 child: ListView.separated(
@@ -80,7 +97,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                   },
                 ),
               ),
-            if (members.length > 1) const SizedBox(height: 10),
+            if (canSelectMembers) const SizedBox(height: 10),
 
             // Timeframe Selection Tabs
             Padding(
@@ -210,12 +227,13 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         child: Row(
                           children: [
                             Text(
-                              selectedMember.avatar,
+                              selectedMember?.avatar ?? '👤',
                               style: const TextStyle(fontSize: 14),
                             ),
                             const SizedBox(width: 6),
                             Text(
-                              '${timelineItems.length} Event(s)',
+                              history.isLoading ? 'Loading history…' : history.hasError
+                                  ? 'History unavailable' : '${timelineItems.length} loaded event(s)',
                               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
                             ),
                           ],
@@ -238,9 +256,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             const Icon(Icons.shield_outlined, size: 12, color: Colors.white),
                             const SizedBox(width: 4),
                             Text(
-                              cronStatus.value != null
-                                  ? 'Purged ${DateFormat('MMM d').format(cronStatus.value!)} (<30d)'
-                                  : 'Auto-Clean <30d Active',
+                              '30-day history window',
                               style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white),
                             ),
                           ],
@@ -254,8 +270,17 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
             // Timeline List / Empty State
             Expanded(
-              child: timelineItems.isEmpty
-                  ? Center(
+              child: history.isLoading
+                  ? _scrollableStatus(child: const CircularProgressIndicator())
+                  : history.hasError
+                  ? _scrollableStatus(child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      const Text('Could not load location history.'),
+                      const SizedBox(height: 8),
+                      FilledButton(onPressed: () => ref.invalidate(rawLocationHistoryProvider),
+                        child: const Text('Retry history')),
+                    ]))
+                  : timelineItems.isEmpty
+                  ? _scrollableStatus(
                       child: Padding(
                         padding: const EdgeInsets.all(32.0),
                         child: Column(
@@ -278,10 +303,22 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       ),
                     )
                   : ListView.separated(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      itemCount: timelineItems.length,
+                      itemCount: timelineItems.length + (pager.hasMore || pager.moreError != null ? 1 : 0),
                       separatorBuilder: (context, index) => const SizedBox(height: 12),
                       itemBuilder: (context, index) {
+                        if (index == timelineItems.length) {
+                          return Padding(padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: Column(children: [
+                              if (pager.moreError != null) Text(pager.moreError!, textAlign: TextAlign.center),
+                              if (pager.hasMore) OutlinedButton(
+                                onPressed: pager.loadingMore ? null : pager.loadMore,
+                                child: Text(pager.loadingMore ? 'Loading older history…' : 'Load older history'),
+                              ),
+                            ]),
+                          );
+                        }
                         final item = timelineItems[index];
 
                         return Card(

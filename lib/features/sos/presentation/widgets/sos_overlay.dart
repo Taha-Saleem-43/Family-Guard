@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'push_delivery_status.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -9,11 +10,7 @@ class SOSOverlay extends ConsumerStatefulWidget {
   final VoidCallback onCancel;
   final VoidCallback? onActivated;
 
-  const SOSOverlay({
-    super.key,
-    required this.onCancel,
-    this.onActivated,
-  });
+  const SOSOverlay({super.key, required this.onCancel, this.onActivated});
 
   @override
   ConsumerState<SOSOverlay> createState() => _SOSOverlayState();
@@ -23,10 +20,14 @@ class _SOSOverlayState extends ConsumerState<SOSOverlay> {
   int _countdown = 3;
   Timer? _timer;
   bool _isActive = false;
+  bool _busy = false;
+  String? _error;
 
   @override
   void initState() {
     super.initState();
+    _isActive = ref.read(sosProvider).isSelfSosActive;
+    if (_isActive) return;
     _playCountdownTick();
     _startCountdown();
   }
@@ -49,17 +50,41 @@ class _SOSOverlayState extends ConsumerState<SOSOverlay> {
 
   Future<void> _triggerEmergencyAlert() async {
     if (!mounted) return;
-    setState(() => _isActive = true);
-    widget.onActivated?.call();
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
 
     // Trigger backend SOS via Riverpod (Silent Mode on sender device: no audio siren or vibration)
-    await ref.read(sosProvider.notifier).triggerEmergency();
+    final sent = await ref.read(sosProvider.notifier).triggerEmergency();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _isActive = sent;
+      _error = sent
+          ? null
+          : 'Could not confirm the alert. Check your connection and retry.';
+    });
+    if (sent) widget.onActivated?.call();
   }
 
   Future<void> _handleResolve() async {
     _timer?.cancel();
-    await ref.read(sosProvider.notifier).resolveEmergency();
-    widget.onCancel();
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final resolved = await ref.read(sosProvider.notifier).resolveEmergency();
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      _error = resolved
+          ? null
+          : 'Could not resolve the alert. It remains active. Retry when connected.';
+    });
+    if (resolved) widget.onCancel();
   }
 
   void _handleCancelCountdown() {
@@ -88,18 +113,46 @@ class _SOSOverlayState extends ConsumerState<SOSOverlay> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const Spacer(),
+            if (_error != null) ...[
+              Text(
+                _error!,
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.white),
+              ),
+              if (!_isActive)
+                TextButton(
+                  onPressed: _busy ? null : _triggerEmergencyAlert,
+                  child: const Text(
+                    'RETRY SOS',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              const SizedBox(height: 16),
+            ],
             if (!_isActive) ...[
-              const Icon(Icons.warning_amber_rounded, size: 80, color: Colors.white),
+              const Icon(
+                Icons.warning_amber_rounded,
+                size: 80,
+                color: Colors.white,
+              ),
               const SizedBox(height: 16),
               const Text(
                 'Sending SOS Alert',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.w900, color: Colors.white),
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
               ),
               const SizedBox(height: 8),
               const Text(
-                'Broadcasting emergency alert & live location to family circle...',
+                'Your emergency alert is active in your circle.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 15, color: Colors.white70, fontWeight: FontWeight.w500),
+                style: TextStyle(
+                  fontSize: 15,
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
               const SizedBox(height: 40),
               Container(
@@ -111,8 +164,12 @@ class _SOSOverlayState extends ConsumerState<SOSOverlay> {
                 ),
                 alignment: Alignment.center,
                 child: Text(
-                  '$_countdown',
-                  style: const TextStyle(fontSize: 72, fontWeight: FontWeight.w900, color: Colors.white),
+                  _busy ? '…' : '$_countdown',
+                  style: const TextStyle(
+                    fontSize: 72,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
                 ),
               ),
               const Spacer(),
@@ -123,23 +180,40 @@ class _SOSOverlayState extends ConsumerState<SOSOverlay> {
                     backgroundColor: Colors.white,
                     foregroundColor: AppColors.sosRed,
                     padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                   ),
-                  onPressed: _handleCancelCountdown,
-                  child: const Text('CANCEL SOS', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900)),
+                  onPressed: _busy ? null : _handleCancelCountdown,
+                  child: const Text(
+                    'CANCEL SOS',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                  ),
                 ),
               ),
             ] else ...[
-              const Icon(Icons.emergency_rounded, size: 90, color: Colors.white),
+              const Icon(
+                Icons.emergency_rounded,
+                size: 90,
+                color: Colors.white,
+              ),
               const SizedBox(height: 20),
               const Text(
                 'SOS ALERT ACTIVE',
-                style: TextStyle(fontSize: 30, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: 1),
+                style: TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  letterSpacing: 1,
+                ),
               ),
               const SizedBox(height: 12),
               // Live SOS duration ticker display
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.25),
                   borderRadius: BorderRadius.circular(20),
@@ -170,10 +244,19 @@ class _SOSOverlayState extends ConsumerState<SOSOverlay> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Emergency broadcast sent to all Circle members.\nLive high-accuracy location tracking active.',
+                'Your emergency alert is saved for your circle.\nDelivery to each device has not been confirmed.',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 15, color: Colors.white.withValues(alpha: 0.9), fontWeight: FontWeight.w600, height: 1.4),
+                style: TextStyle(
+                  fontSize: 15,
+                  color: Colors.white.withValues(alpha: 0.9),
+                  fontWeight: FontWeight.w600,
+                  height: 1.4,
+                ),
               ),
+              if (sosState.activeAlertId != null) ...[
+                const SizedBox(height: 12),
+                PushDeliveryStatus(alertId: sosState.activeAlertId!),
+              ],
               const Spacer(),
               SizedBox(
                 width: double.infinity,
@@ -182,10 +265,15 @@ class _SOSOverlayState extends ConsumerState<SOSOverlay> {
                     backgroundColor: Colors.white,
                     foregroundColor: AppColors.textPrimary,
                     padding: const EdgeInsets.symmetric(vertical: 18),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                   ),
-                  onPressed: _handleResolve,
-                  child: const Text('Resolve / Dismiss Alert', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+                  onPressed: _busy ? null : _handleResolve,
+                  child: const Text(
+                    'Resolve / Dismiss Alert',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
+                  ),
                 ),
               ),
             ],

@@ -1,6 +1,38 @@
 {
   "indexes": [
     {
+      "collectionGroup": "placeEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "circleId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "placeEvents",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "circleId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "memberId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
       "collectionGroup": "sos_alerts",
       "queryScope": "COLLECTION",
       "fields": [
@@ -27,7 +59,193 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "points",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "circleId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "timestamp",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "queryScope": "COLLECTION",
+      "collectionGroup": "accountDeletions",
+      "fields": [
+        {
+          "order": "ASCENDING",
+          "fieldPath": "status"
+        },
+        {
+          "order": "ASCENDING",
+          "fieldPath": "leaseUntil"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "pushDevices",
+      "fields": [
+        {
+          "order": "ASCENDING",
+          "fieldPath": "uid"
+        },
+        {
+          "order": "ASCENDING",
+          "fieldPath": "enabled"
+        },
+        {
+          "order": "ASCENDING",
+          "fieldPath": "expireAt"
+        }
+      ],
+      "queryScope": "COLLECTION"
+    },
+    {
+      "collectionGroup": "sosPushDeliveries",
+      "fields": [
+        {
+          "order": "ASCENDING",
+          "fieldPath": "status"
+        },
+        {
+          "order": "ASCENDING",
+          "fieldPath": "nextAttemptAt"
+        }
+      ],
+      "queryScope": "COLLECTION"
+    },
+    {
+      "collectionGroup": "sosPushDeliveries",
+      "fields": [
+        {
+          "order": "ASCENDING",
+          "fieldPath": "status"
+        },
+        {
+          "order": "ASCENDING",
+          "fieldPath": "leaseUntil"
+        }
+      ],
+      "queryScope": "COLLECTION"
+    },
+    {
+      "fields": [
+        {
+          "fieldPath": "alertId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "circleId",
+          "order": "ASCENDING"
+        }
+      ],
+      "collectionGroup": "sosPushDeliveries",
+      "queryScope": "COLLECTION"
+    },
+    {
+      "collectionGroup": "placePushDeliveries",
+      "fields": [
+        {
+          "order": "ASCENDING",
+          "fieldPath": "status"
+        },
+        {
+          "order": "ASCENDING",
+          "fieldPath": "nextAttemptAt"
+        }
+      ],
+      "queryScope": "COLLECTION"
+    },
+    {
+      "collectionGroup": "placePushDeliveries",
+      "fields": [
+        {
+          "order": "ASCENDING",
+          "fieldPath": "status"
+        },
+        {
+          "order": "ASCENDING",
+          "fieldPath": "leaseUntil"
+        }
+      ],
+      "queryScope": "COLLECTION"
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "placeEvents",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "placePresence",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "points",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "inviteAttempts",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sos_alerts",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "circleInvites",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "fieldPath": "expireAt",
+      "indexes": [],
+      "ttl": true,
+      "collectionGroup": "accountDeletions"
+    },
+    {
+      "ttl": true,
+      "collectionGroup": "pushDevices",
+      "fieldPath": "expireAt"
+    },
+    {
+      "ttl": true,
+      "collectionGroup": "sosPushDeliveries",
+      "fieldPath": "expireAt",
+      "indexes": []
+    },
+    {
+      "indexes": [],
+      "fieldPath": "token",
+      "collectionGroup": "pushDevices"
+    },
+    {
+      "indexes": [],
+      "fieldPath": "secretHash",
+      "collectionGroup": "pushDevices"
+    },
+    {
+      "collectionGroup": "placePushDeliveries",
+      "fieldPath": "expireAt",
+      "ttl": true,
+      "indexes": []
+    }
+  ]
 }

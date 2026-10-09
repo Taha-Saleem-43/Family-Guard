@@ -13,10 +13,10 @@ void main() {
       final childCode = AuthService.generateInviteCode('FAMILY');
 
       expect(parentCode.startsWith('PARENT-'), isTrue);
-      expect(parentCode.length, equals(11)); // PARENT-XXXX
+      expect(parentCode, matches(RegExp(r'^PARENT-[A-F0-9]{16}$')));
 
       expect(childCode.startsWith('FAMILY-'), isTrue);
-      expect(childCode.length, equals(11)); // FAMILY-XXXX
+      expect(childCode, matches(RegExp(r'^FAMILY-[A-F0-9]{16}$')));
     });
 
     test('UserAccountModel serializes and deserializes correctly', () {
@@ -82,7 +82,9 @@ void main() {
       expect(activeSession, isNotNull);
       expect(activeSession!['uid'], equals(testUid));
       expect(activeSession['isLoggedIn'], isTrue);
-      expect(activeSession['idToken'], equals(mockJwtToken));
+      expect(activeSession.containsKey('idToken'), isFalse);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('fg_user_session_${testUid}_idToken'), isNull);
       expect(activeSession['circleId'], equals('circle_jwt_99'));
     });
 
@@ -115,7 +117,7 @@ void main() {
       expect(activeSession, isNull);
     });
 
-    test('AppStateNotifier checkRestoreSession automatically skips onboarding for logged in users', () async {
+    test('Preferences cannot restore an unauthenticated session', () async {
       TestWidgetsFlutterBinding.ensureInitialized();
       SharedPreferences.setMockInitialValues({});
       const testUid = 'user_auto_login_789';
@@ -133,14 +135,14 @@ void main() {
       expect(notifier.state.stage, equals(AppStage.onboarding));
 
       final restored = await notifier.checkRestoreSession(testUid);
-      expect(restored, isTrue);
-      expect(notifier.state.stage, equals(AppStage.main));
-      expect(notifier.state.userId, equals(testUid));
-      expect(notifier.state.circleId, equals('circle_auto_11'));
+      expect(restored, isFalse);
+      expect(notifier.state.stage, equals(AppStage.onboarding));
+      expect(notifier.state.userId, isEmpty);
 
       // Logout / reset
       notifier.resetToOnboarding();
       expect(notifier.state.stage, equals(AppStage.onboarding));
+      notifier.dispose();
     });
   });
 }
