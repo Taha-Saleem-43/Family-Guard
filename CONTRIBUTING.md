@@ -1,6 +1,6 @@
 # Development workflow
 
-Keep `main` releasable. Develop on `codex/<feature>` branches and merge reviewed pull requests after CI passes. Cut `release/<version>` for final device verification and release-only fixes. Do not put secrets, keystores or service-account credentials in Git.
+Keep `main` releasable. Develop on `codex/<feature>` branches, review the code, run relevant checks and push each feature to its respective branch. Do not open pull requests unless the owner explicitly requests one. Merge into `main` only when the owner requests it. Cut `release/<version>` for final device verification and release-only fixes. Do not put secrets, keystores or service-account credentials in Git.
 
 Group commits by behavior: authorization/backend, session lifecycle, tracking, history, notifications and release configuration. Every feature needs meaningful regression tests for its own behavior and failure paths. Backend rules changes require emulator tests. Background tracking and notification changes also require physical-device checks.
 
@@ -33,4 +33,4 @@ On Windows, `scripts/verify.ps1` sets project-local Dart, npm and emulator cache
 
 ## Feature completion
 
-A feature is ready when its UI, storage, authorization, failures and tests work together. Record migration/deployment requirements in the PR. Do not claim a Play Store release is ready until the signed build, real-device checklist, account deletion, privacy disclosures and Play Console requirements are complete.
+A feature is ready when its UI, storage, authorization, failures and tests work together. Record migration/deployment requirements in repository release documentation. Do not claim a Play Store release is ready until the signed build, real-device checklist, account deletion, privacy disclosures and Play Console requirements are complete.
