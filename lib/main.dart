@@ -7,6 +7,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tracelet/tracelet.dart' as tl;
 import 'core/providers/app_state_provider.dart';
+import 'core/presentation/local_privacy_gate.dart';
+import 'core/services/firestore_privacy_service.dart';
 import 'core/services/location_service.dart';
 import 'core/services/location_sync_service.dart';
 import 'core/theme/app_theme.dart';
@@ -40,6 +42,7 @@ void backgroundLocationHandler(tl.HeadlessEvent event) async {
       );
     }
     await FirebaseAuth.instance.authStateChanges().first;
+    FirestorePrivacyService.configureMemoryCache();
     final location = event.name == 'heartbeat'
         ? tl.HeartbeatEvent.fromMap(event.event).location
         : tl.Location.fromMap(event.event);
@@ -66,7 +69,12 @@ void main() async {
         : AndroidProvider.playIntegrity,
     appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
   );
-  runApp(const ProviderScope(child: FamilyGuardApp()));
+  runApp(
+    LocalPrivacyGate(
+      prepare: FirestorePrivacyService.prepareForeground,
+      child: const ProviderScope(child: FamilyGuardApp()),
+    ),
+  );
 }
 
 class FamilyGuardApp extends ConsumerStatefulWidget {

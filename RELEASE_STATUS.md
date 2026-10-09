@@ -42,6 +42,8 @@ New personal Play accounts currently require at least 12 opted-in testers contin
 
 ## Verification
 
+Account cache privacy: all 99 Flutter tests pass and app/test analysis is clean. Foreground and headless Firestore clients use memory-only caching; a one-time startup migration clears older disk caches and pending Firestore writes before account screens mount. Failed migration blocks the account UI and can be retried. Device verification of the upgrade/headless lifecycle remains required; durable offline uploads remain separate work.
+
 Account deletion: all 95 Flutter tests passed, including dialog cancellation/confirmation and scoped preferences. Five deletion emulator tests passed; 30 security/membership/SOS/invite regressions passed, including cached-token denial and profile recreation prevention. Final app/test analysis is clean. Backend Auth is mocked in deletion tests. Deployment and production deletion have not been performed. See `docs/ACCOUNT_DELETION.md` for scope and remaining release gates, including Firestore offline-cache erasure.
 
 History pagination: the full 90-test Flutter suite passed, then all 9 targeted history tests passed including the new load-older widget/retry test. All 13 rules emulator tests passed, including identical-timestamp cursor ordering. Final app/test analysis and final widget-test analysis are clean. Older-page failures retain existing data, repeated load-more taps are coalesced, and late results cannot restore data after an account switch.
