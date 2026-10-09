@@ -146,7 +146,7 @@ class _SOSOverlayState extends ConsumerState<SOSOverlay> {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Broadcasting emergency alert & live location to family circle...',
+                'Your emergency alert is active in your circle.',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 15,

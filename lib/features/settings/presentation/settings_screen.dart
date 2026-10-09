@@ -121,7 +121,7 @@ class SettingsScreen extends ConsumerWidget {
                 ),
               ),
               Text(
-                '${members.length} Active',
+                '${members.length} Members',
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,

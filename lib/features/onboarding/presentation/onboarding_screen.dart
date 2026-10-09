@@ -60,19 +60,19 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     {
       'icon': Icons.my_location_rounded,
       'title': "See your family's location",
-      'body': 'Know where everyone is, updated in real time — even when the app is closed.',
+      'body': 'See recent shared locations. Background updates depend on permissions, connectivity and Android settings.',
       'gradient': [const Color(0xFF3B82F6), const Color(0xFF2563EB)],
     },
     {
       'icon': Icons.notifications_active_rounded,
       'title': 'Get alerts when they arrive',
-      'body': 'Set up Places like Home and School and get notified the moment someone arrives or leaves.',
+      'body': 'Save Places like Home and School to see confirmed arrival and departure activity. Notifications can be delayed.',
       'gradient': [const Color(0xFF0D9488), const Color(0xFF0F766E)],
     },
     {
       'icon': Icons.sos_rounded,
       'title': 'SOS for emergencies',
-      'body': 'One tap sends an emergency alert with a live location to every family member instantly.',
+      'body': 'Send an SOS to your family circle when connected. Check delivery status in the app; notifications may be delayed.',
       'gradient': [const Color(0xFF8B5CF6), const Color(0xFF7C3AED)],
     },
   ];
