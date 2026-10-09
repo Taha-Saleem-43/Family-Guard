@@ -18,6 +18,28 @@ function createAccountDeletionHandlers(db, auth) {
       if (error.code !== 'auth/user-not-found') throw error;
     }
   }
+  async function deleteOwnedPlaces(uid) {
+    while (true) {
+      const page = await db.collection('places').where('createdBy', '==', uid).limit(100).get();
+      if (page.empty) return;
+      const circleIds = [...new Set(page.docs.map((doc) => doc.data().circleId)
+        .filter((id) => typeof id === 'string' && id && !id.includes('/')))];
+      await db.runTransaction(async (tx) => {
+        const current = await Promise.all(page.docs.map((doc) => tx.get(doc.ref)));
+        const configs = await Promise.all(circleIds.map((id) => tx.get(db.doc(`circles/${id}/private/places`))));
+        const owned = current.filter((doc) => doc.exists && doc.data().createdBy === uid);
+        for (const config of configs) {
+          if (!config.exists) continue;
+          const places = { ...(config.data().places || {}) };
+          for (const place of owned) {
+            if (place.data().circleId === config.ref.parent.parent.id) delete places[place.id];
+          }
+          tx.set(config.ref, { places, updatedAt: Timestamp.now() });
+        }
+        for (const place of owned) tx.delete(place.ref);
+      });
+    }
+  }
   return {
     async request(request) {
       const uid = request.auth?.uid;
@@ -95,8 +117,9 @@ function createAccountDeletionHandlers(db, auth) {
         await db.recursiveDelete(db.doc(`locationHistory/${uid}`));
         await db.doc(`locations/${uid}`).delete();
         await deleteQuery(db.collection('sos_alerts').where('senderId', '==', uid));
-        await deleteQuery(db.collection('places').where('createdBy', '==', uid));
+        await deleteOwnedPlaces(uid);
         await deleteQuery(db.collection('pushDevices').where('uid', '==', uid));
+        await deleteQuery(db.collection('placePresence').where('uid', '==', uid));
         await deleteQuery(db.collection('sosPushDeliveries').where('recipientUid', '==', uid));
         for (const collection of ['placeEvents', 'sosEvents']) {
           for (const field of ['userId', 'uid', 'memberId', 'senderId']) {
@@ -115,7 +138,7 @@ function createAccountDeletionHandlers(db, auth) {
         if (closedCircleId) {
           await db.recursiveDelete(db.doc(`circles/${closedCircleId}`));
           await deleteQuery(db.collection('circleInvites').where('circleId', '==', closedCircleId));
-          for (const collection of ['places', 'placeEvents', 'sosEvents', 'sos_alerts']) {
+          for (const collection of ['places', 'placePresence', 'placeEvents', 'sosEvents', 'sos_alerts']) {
             await deleteQuery(db.collection(collection).where('circleId', '==', closedCircleId));
           }
         }

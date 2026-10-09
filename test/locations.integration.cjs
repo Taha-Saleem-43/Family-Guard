@@ -66,3 +66,12 @@ test('invalid batches are rejected without partial writes', async () => {
   await assert.rejects(upload(uid, [valid, valid]), { code: 'invalid-argument' });
   assert.equal((await db.collection(`locationHistory/${uid}/points`).get()).size, 0);
 });
+test('per-account recovery budget bounds writes before expensive processing', async () => {
+  const uid = 'location-budget'; await setup(uid);
+  const { Timestamp } = req('firebase-admin/firestore');
+  await db.doc(`users/${uid}`).update({ locationIngestWindow: Timestamp.now(), locationIngestCount: 599 });
+  await assert.rejects(upload(uid, [fix('4'), fix('5')]), { code: 'resource-exhausted' });
+  assert.equal((await db.collection(`locationHistory/${uid}/points`).get()).size, 0);
+  await upload(uid, [fix('6')]);
+  await assert.rejects(upload(uid, [fix('7')]), { code: 'resource-exhausted' });
+});

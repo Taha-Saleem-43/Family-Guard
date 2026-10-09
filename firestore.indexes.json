@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "placeEvents", "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "circleId", "order": "ASCENDING" }, { "fieldPath": "timestamp", "order": "DESCENDING" }]
+    },
+    {
+      "collectionGroup": "placeEvents", "queryScope": "COLLECTION",
+      "fields": [{ "fieldPath": "circleId", "order": "ASCENDING" }, { "fieldPath": "memberId", "order": "ASCENDING" }, { "fieldPath": "timestamp", "order": "DESCENDING" }]
+    },
+    {
       "collectionGroup": "sos_alerts",
       "queryScope": "COLLECTION",
       "fields": [
@@ -118,6 +126,8 @@
     }
   ],
   "fieldOverrides": [
+    { "collectionGroup": "placeEvents", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "placePresence", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
     {
       "collectionGroup": "points",
       "fieldPath": "expireAt",

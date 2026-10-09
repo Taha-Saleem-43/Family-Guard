@@ -21,6 +21,7 @@ function validateFix(value, now) {
 }
 
 function createLocationHandlers(db) {
+  const places = require('./places').createPlaceHandlers(db);
   async function ingest(request) {
     const uid = authenticated(request);
     const { circleId, fixes } = request.data || {};
@@ -35,19 +36,23 @@ function createLocationHandlers(db) {
     }
     const profileRef = db.doc(`users/${uid}`);
     return db.runTransaction(async (tx) => {
-      const [profile, circle, deletion] = await Promise.all([
-        tx.get(profileRef), tx.get(db.doc(`circles/${circleId}`)), tx.get(db.doc(`accountDeletions/${uid}`)),
-      ]);
+      const [profile, circle, deletion] = await tx.getAll(
+        profileRef, db.doc(`circles/${circleId}`), db.doc(`accountDeletions/${uid}`));
       const user = profile.data();
       if (!user || user.deletionRequested || deletion.exists || user.circleId !== circleId
         || user.role !== 'child' || !circle.exists || !circle.data().memberIds?.includes(uid)) {
         throw new HttpsError('failed-precondition', 'Location sharing context is no longer active.');
       }
+      const windowStart = user.locationIngestWindow?.toMillis?.() || 0;
+      const sameWindow = now >= windowStart && now - windowStart < 60000;
+      const count = sameWindow && Number.isInteger(user.locationIngestCount) ? user.locationIngestCount : 0;
+      if (count + points.length > 600) throw new HttpsError('resource-exhausted', 'Location recovery is temporarily rate limited.');
       const refs = points.map((point) => db.doc(`locationHistory/${uid}/points/${point.id}`));
-      const existing = await Promise.all(refs.map((ref) => tx.get(ref)));
+      const existing = await tx.getAll(...refs);
       let newest = null;
       const watermark = user.lastLocationCapturedAt?.toMillis?.()
         ?? (Date.parse(user.lastSeen || '') || 0);
+      const pending = [];
       for (let index = 0; index < points.length; index++) {
         const point = points[index];
         const { id, capturedAt, ...fields } = point;
@@ -58,18 +63,23 @@ function createLocationHandlers(db) {
           }
           continue;
         }
-        tx.create(refs[index], { ...fields, circleId, fingerprint,
-          timestamp: Timestamp.fromMillis(capturedAt), expireAt: Timestamp.fromMillis(capturedAt + 30 * 86400000) });
+        pending.push({ ref: refs[index], fields: { ...fields, circleId, fingerprint,
+          timestamp: Timestamp.fromMillis(capturedAt), expireAt: Timestamp.fromMillis(capturedAt + 30 * 86400000) } });
         if (capturedAt > watermark && capturedAt >= now - 120000
           && (!newest || capturedAt > newest.capturedAt || (capturedAt === newest.capturedAt && id > newest.id))) {
           newest = point;
         }
       }
+      await places.recordTransitions(tx, uid, circleId, user, newest);
+      for (const point of pending) tx.create(point.ref, point.fields);
+      const profileUpdate = { locationIngestWindow: Timestamp.fromMillis(sameWindow ? windowStart : now),
+        locationIngestCount: count + points.length };
       if (newest) {
         const { id, capturedAt, ...fields } = newest;
-        tx.update(profileRef, { ...fields, lastSeen: new Date(capturedAt).toISOString(),
+        Object.assign(profileUpdate, { ...fields, lastSeen: new Date(capturedAt).toISOString(),
           lastLocationCapturedAt: Timestamp.fromMillis(capturedAt), lastLocationPointId: id });
       }
+      tx.update(profileRef, profileUpdate);
       return { acceptedIds: points.map((point) => point.id), liveUpdated: newest !== null };
     });
   }

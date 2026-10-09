@@ -53,6 +53,7 @@ class PlacesController {
     final service = _ref.read(placesServiceProvider);
     await service.toggleNotifications(
       placeId: place.id,
+      circleId: place.circleId,
       notifyArrive: !place.notifyArrive,
     );
   }
@@ -61,13 +62,17 @@ class PlacesController {
     final service = _ref.read(placesServiceProvider);
     await service.toggleNotifications(
       placeId: place.id,
+      circleId: place.circleId,
       notifyLeave: !place.notifyLeave,
     );
   }
 
   Future<void> deletePlace(String placeId) async {
     final service = _ref.read(placesServiceProvider);
-    await service.deletePlace(placeId);
+    await service.deletePlace(
+      placeId,
+      circleId: _ref.read(appStateProvider).circleId,
+    );
   }
 }
 

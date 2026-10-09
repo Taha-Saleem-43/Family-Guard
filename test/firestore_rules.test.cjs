@@ -20,6 +20,18 @@ before(async () => {
 });
 after(async () => { if (env) await env.cleanup(); });
 const dbFor = (uid) => env.authenticatedContext(uid).firestore();
+test('place activity is private to parents and the recorded child', async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'placeEvents/child-arrival'), { circleId: 'a', memberId: 'childA', timestamp: Timestamp.now() });
+    await setDoc(doc(context.firestore(), 'placePresence/hidden'), { circleId: 'a', uid: 'childA' });
+  });
+  await assertSucceeds(getDoc(doc(dbFor('parentA'), 'placeEvents/child-arrival')));
+  await assertSucceeds(getDoc(doc(dbFor('childA'), 'placeEvents/child-arrival')));
+  await assertFails(getDoc(doc(dbFor('siblingA'), 'placeEvents/child-arrival')));
+  await assertFails(getDoc(doc(dbFor('parentB'), 'placeEvents/child-arrival')));
+  await assertFails(getDoc(doc(dbFor('childA'), 'placePresence/hidden')));
+  await assertFails(setDoc(doc(dbFor('childA'), 'placeEvents/forged'), { circleId: 'a', memberId: 'childA' }));
+});
 test('push tokens stay private and only the SOS sender can read delivery status', async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), 'pushDevices/private-device'), { uid: 'childA', token: 'secret-token' });
@@ -92,7 +104,7 @@ test('history requires timestamp TTL and valid coordinates', async () => {
 });
 test('place management belongs to parents in the circle', async () => {
   const place = { circleId: 'a', createdBy: 'parentA', latitude: 1, longitude: 2, radius: 200 };
-  await assertSucceeds(setDoc(doc(dbFor('parentA'), 'places/home'), place));
+  await assertFails(setDoc(doc(dbFor('parentA'), 'places/home'), place));
   await assertFails(setDoc(doc(dbFor('childA'), 'places/school'), { ...place, createdBy: 'childA' }));
   await assertFails(setDoc(doc(dbFor('parentB'), 'places/foreign'), { ...place, createdBy: 'parentB' }));
 });

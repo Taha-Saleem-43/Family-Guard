@@ -30,7 +30,9 @@ test('deletion detaches only its member and preserves other family data', async 
   await db.doc('locationHistory/delete-parent/points/one').set({ timestamp: Timestamp.now() });
   await db.doc('locationHistory/keep-child/points/one').set({ timestamp: Timestamp.now() });
   await db.doc('sos_alerts/deleted-alert').set({ senderId: 'delete-parent' });
-  await db.doc('places/deleted-place').set({ createdBy: 'delete-parent' });
+  await db.doc('places/deleted-place').set({ createdBy: 'delete-parent', circleId: 'deletion-family' });
+  await db.doc('circles/deletion-family/private/places').set({ places: { 'deleted-place': { name: 'Private home' }, 'surviving-place': { name: 'Shared school' } } });
+  await db.doc('placePresence/deleted-presence').set({ uid: 'delete-parent' });
   await db.doc('pushDevices/deleted-device').set({ uid: 'delete-parent', token: 'mock-token' });
   await db.doc('sosPushDeliveries/deleted-job').set({ recipientUid: 'delete-parent' });
   await handlers.request(request('delete-parent'));
@@ -39,10 +41,11 @@ test('deletion detaches only its member and preserves other family data', async 
   assert.deepEqual(family.memberIds, ['keep-child']);
   assert.equal(family.requiresParent, true);
   await handlers.process('delete-parent');
-  for (const path of ['users/delete-parent', 'locationHistory/delete-parent/points/one', 'sos_alerts/deleted-alert', 'places/deleted-place', 'pushDevices/deleted-device', 'sosPushDeliveries/deleted-job']) {
+  for (const path of ['users/delete-parent', 'locationHistory/delete-parent/points/one', 'sos_alerts/deleted-alert', 'places/deleted-place', 'placePresence/deleted-presence', 'pushDevices/deleted-device', 'sosPushDeliveries/deleted-job']) {
     assert.equal((await db.doc(path).get()).exists, false, path);
   }
   assert.equal((await db.doc('locationHistory/keep-child/points/one').get()).exists, true);
+  assert.deepEqual(Object.keys((await db.doc('circles/deletion-family/private/places').get()).data().places), ['surviving-place']);
   assert.equal((await db.doc('accountDeletions/delete-parent').get()).data().status, 'complete');
   const count = calls.length;
   await handlers.process('delete-parent');

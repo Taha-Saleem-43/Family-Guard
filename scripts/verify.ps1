@@ -33,6 +33,8 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Push delivery integration tests failed' }
   npm.cmd run test:locations
   if ($LASTEXITCODE -ne 0) { throw 'Location ingestion integration tests failed' }
+  npm.cmd run test:places
+  if ($LASTEXITCODE -ne 0) { throw 'Place event integration tests failed' }
   Push-Location tool/sqlite_tests
   try {
     flutter pub get --enforce-lockfile
