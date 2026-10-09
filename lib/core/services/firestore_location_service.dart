@@ -218,72 +218,82 @@ class FirestoreLocationService {
   Stream<List<Member>> streamCircleMembers({
     required String circleId,
     required String currentUid,
+    required UserRole currentRole,
   }) {
-    if (circleId.isEmpty || _firestore == null) return Stream.value([]);
+    if (circleId.isEmpty || currentUid.isEmpty || _firestore == null) {
+      return Stream.value([]);
+    }
 
-    return _firestore
-        .collection('users')
-        .where('circleId', isEqualTo: circleId)
-        .snapshots()
-        .map((snapshot) {
-          return snapshot.docs.map((doc) {
-            final data = doc.data();
-            final isSelf = doc.id == currentUid;
-            final name = data['displayName'] as String? ?? 'Family Member';
-            final roleStr = data['role'] as String? ?? 'child';
-            final role = roleStr == 'parent' ? UserRole.parent : UserRole.child;
+    final profiles = currentRole == UserRole.parent
+        ? _firestore
+              .collection('users')
+              .where('circleId', isEqualTo: circleId)
+              .snapshots()
+              .map((snapshot) => snapshot.docs)
+        : _firestore
+              .collection('users')
+              .doc(currentUid)
+              .snapshots()
+              .map(
+                (doc) => doc.exists
+                    ? [doc]
+                    : <DocumentSnapshot<Map<String, dynamic>>>[],
+              );
+    return profiles.map((documents) {
+      return documents.map((doc) {
+        final data = doc.data()!;
+        final isSelf = doc.id == currentUid;
+        final name = data['displayName'] as String? ?? 'Family Member';
+        final roleStr = data['role'] as String? ?? 'child';
+        final role = roleStr == 'parent' ? UserRole.parent : UserRole.child;
 
-            final lat = (data['latitude'] as num?)?.toDouble();
-            final lng = (data['longitude'] as num?)?.toDouble();
-            final speed = (data['speedMph'] as num?)?.toDouble() ?? 0.0;
-            final activityStr =
-                data['movementActivity'] as String? ?? 'stationary';
-            final activity = MovementActivity.fromString(activityStr);
-            final battery = (data['batteryLevel'] as num?)?.toInt() ?? 100;
-            final isCharging = data['isCharging'] as bool? ?? false;
+        final lat = (data['latitude'] as num?)?.toDouble();
+        final lng = (data['longitude'] as num?)?.toDouble();
+        final speed = (data['speedMph'] as num?)?.toDouble() ?? 0.0;
+        final activityStr = data['movementActivity'] as String? ?? 'stationary';
+        final activity = MovementActivity.fromString(activityStr);
+        final battery = (data['batteryLevel'] as num?)?.toInt() ?? 100;
+        final isCharging = data['isCharging'] as bool? ?? false;
 
-            DateTime lastSeen = DateTime.fromMillisecondsSinceEpoch(
-              0,
-              isUtc: true,
-            );
-            if (data['lastSeen'] != null) {
-              try {
-                lastSeen = DateTime.parse(data['lastSeen'] as String);
-              } catch (_) {}
-            }
+        DateTime lastSeen = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+        if (data['lastSeen'] != null) {
+          try {
+            lastSeen = DateTime.parse(data['lastSeen'] as String);
+          } catch (_) {}
+        }
 
-            final isSosActive = data['isSosActive'] as bool? ?? false;
-            final isStale = DateTime.now().difference(lastSeen).inMinutes > 15;
+        final isSosActive = data['isSosActive'] as bool? ?? false;
+        final isStale = DateTime.now().difference(lastSeen).inMinutes > 15;
 
-            final pinColor = isSosActive
-                ? AppColors.sosRed
-                : (isSelf
-                      ? AppColors.primary
-                      : (role == UserRole.parent
-                            ? AppColors.primary
-                            : AppColors.teal));
+        final pinColor = isSosActive
+            ? AppColors.sosRed
+            : (isSelf
+                  ? AppColors.primary
+                  : (role == UserRole.parent
+                        ? AppColors.primary
+                        : AppColors.teal));
 
-            return Member(
-              id: doc.id,
-              name: isSelf ? '$name (You)' : name,
-              avatar: role == UserRole.parent ? '👨' : '👩‍🦰',
-              role: role,
-              latitude: lat,
-              longitude: lng,
-              address: lat != null && lng != null
-                  ? '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}'
-                  : 'Location Pending',
-              lastSeen: lastSeen,
-              batteryLevel: battery,
-              isCharging: isCharging,
-              speedMph: speed,
-              movementActivity: activity,
-              pinColor: pinColor,
-              isStale: isStale,
-              isSosActive: isSosActive,
-            );
-          }).toList();
-        });
+        return Member(
+          id: doc.id,
+          name: isSelf ? '$name (You)' : name,
+          avatar: role == UserRole.parent ? '👨' : '👩‍🦰',
+          role: role,
+          latitude: lat,
+          longitude: lng,
+          address: lat != null && lng != null
+              ? '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}'
+              : 'Location Pending',
+          lastSeen: lastSeen,
+          batteryLevel: battery,
+          isCharging: isCharging,
+          speedMph: speed,
+          movementActivity: activity,
+          pinColor: pinColor,
+          isStale: isStale,
+          isSosActive: isSosActive,
+        );
+      }).toList();
+    });
   }
 
   static double _calculateDistanceMeters(

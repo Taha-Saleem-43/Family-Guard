@@ -146,19 +146,6 @@ class AuthService {
       .snapshots()
       .map((doc) => doc.data());
 
-  Stream<List<UserAccountModel>> streamCircleMembers(String circleId) {
-    if (circleId.isEmpty) return Stream.value([]);
-    return _firestore
-        .collection('users')
-        .where('circleId', isEqualTo: circleId)
-        .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
-              .map((doc) => UserAccountModel.fromMap(doc.data(), doc.id))
-              .toList(),
-        );
-  }
-
   // Production codes are generated only by the server; retained for format tests.
   static String generateInviteCode(String prefix) {
     final random = Random.secure();

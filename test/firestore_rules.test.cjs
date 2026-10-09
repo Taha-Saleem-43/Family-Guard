@@ -8,7 +8,7 @@ before(async () => {
     firestore: { rules: readFileSync('firestore.rules', 'utf8'), host: '127.0.0.1', port: 8080 } });
   await env.withSecurityRulesDisabled(async (context) => {
     const db = context.firestore();
-    for (const [uid, circleId, role] of [['parentA', 'a', 'parent'], ['childA', 'a', 'child'], ['parentB', 'b', 'parent']]) {
+    for (const [uid, circleId, role] of [['parentA', 'a', 'parent'], ['childA', 'a', 'child'], ['siblingA', 'a', 'child'], ['parentB', 'b', 'parent']]) {
       await setDoc(doc(db, 'users', uid), { uid, circleId, role, displayName: uid });
     }
     await setDoc(doc(db, 'circles/a'), { name: 'A', memberIds: ['parentA', 'childA'] });
@@ -65,4 +65,11 @@ test('place management belongs to parents in the circle', async () => {
   await assertSucceeds(setDoc(doc(dbFor('parentA'), 'places/home'), place));
   await assertFails(setDoc(doc(dbFor('childA'), 'places/school'), { ...place, createdBy: 'childA' }));
   await assertFails(setDoc(doc(dbFor('parentB'), 'places/foreign'), { ...place, createdBy: 'parentB' }));
+});
+
+test('children can read themselves but cannot query other location profiles', async () => {
+  await assertSucceeds(getDoc(doc(dbFor('childA'), 'users/childA')));
+  await assertFails(getDoc(doc(dbFor('childA'), 'users/parentA')));
+  await assertFails(getDoc(doc(dbFor('childA'), 'users/siblingA')));
+  await assertFails(getDocs(query(collection(dbFor('childA'), 'users'), where('circleId', '==', 'a'))));
 });

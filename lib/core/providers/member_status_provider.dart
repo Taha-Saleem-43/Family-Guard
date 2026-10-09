@@ -21,6 +21,7 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
 
   StreamSubscription<BatteryState>? _batterySub;
   StreamSubscription<List<Member>>? _firestoreCircleSub;
+  int _circleGeneration = 0;
   Timer? _batteryPollTimer;
   StreamSubscription<tl.Location>? _locationSub, _motionSub;
 
@@ -57,9 +58,10 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
   void _listenToFirestoreCircle() {
     _ref.listen<AppState>(appStateProvider, (previous, next) {
       if (next.circleId != previous?.circleId ||
-          next.userId != previous?.userId) {
+          next.userId != previous?.userId ||
+          next.role != previous?.role) {
         _initMembers();
-        _subscribeToCircleStream(next.circleId, next.userId);
+        _subscribeToCircleStream(next.circleId, next.userId, next.role);
       }
     });
 
@@ -68,18 +70,29 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
       _subscribeToCircleStream(
         currentAppState.circleId,
         currentAppState.userId,
+        currentAppState.role,
       );
     }
   }
 
-  void _subscribeToCircleStream(String circleId, String currentUid) {
+  void _subscribeToCircleStream(
+    String circleId,
+    String currentUid,
+    UserRole role,
+  ) {
+    final generation = ++_circleGeneration;
     _firestoreCircleSub?.cancel();
     if (circleId.isEmpty) return;
 
     _firestoreCircleSub = _firestoreLocationService
-        .streamCircleMembers(circleId: circleId, currentUid: currentUid)
+        .streamCircleMembers(
+          circleId: circleId,
+          currentUid: currentUid,
+          currentRole: role,
+        )
         .listen(
           (remoteMembers) {
+            if (!mounted || generation != _circleGeneration) return;
             final localSelf = state
                 .where((m) => m.id == currentUid)
                 .firstOrNull;

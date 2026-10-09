@@ -16,7 +16,7 @@ service cloud.firestore {
         && data.longitude is number && data.longitude >= -180 && data.longitude <= 180;
     }
     match /users/{uid} {
-      allow read: if owner(uid) || member(resource.data.circleId);
+      allow read: if owner(uid) || parent(resource.data.circleId);
       allow create: if owner(uid)
         && request.resource.data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'circleId', 'createdAt'])
         && request.resource.data.uid == uid && request.resource.data.role == 'child'
