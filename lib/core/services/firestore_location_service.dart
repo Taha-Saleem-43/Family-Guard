@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../models/location_history_point.dart';
 import '../models/member.dart';
 import '../models/movement_activity.dart';
-import '../theme/app_colors.dart';
+import 'member_profile_decoder.dart';
 
 class FirestoreLocationService {
   final FirebaseFirestore? _firestore;
@@ -240,59 +240,17 @@ class FirestoreLocationService {
                     : <DocumentSnapshot<Map<String, dynamic>>>[],
               );
     return profiles.map((documents) {
-      return documents.map((doc) {
-        final data = doc.data()!;
-        final isSelf = doc.id == currentUid;
-        final name = data['displayName'] as String? ?? 'Family Member';
-        final roleStr = data['role'] as String? ?? 'child';
-        final role = roleStr == 'parent' ? UserRole.parent : UserRole.child;
-
-        final lat = (data['latitude'] as num?)?.toDouble();
-        final lng = (data['longitude'] as num?)?.toDouble();
-        final speed = (data['speedMph'] as num?)?.toDouble() ?? 0.0;
-        final activityStr = data['movementActivity'] as String? ?? 'stationary';
-        final activity = MovementActivity.fromString(activityStr);
-        final battery = (data['batteryLevel'] as num?)?.toInt() ?? 100;
-        final isCharging = data['isCharging'] as bool? ?? false;
-
-        DateTime lastSeen = DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
-        if (data['lastSeen'] != null) {
-          try {
-            lastSeen = DateTime.parse(data['lastSeen'] as String);
-          } catch (_) {}
-        }
-
-        final isSosActive = data['isSosActive'] as bool? ?? false;
-        final isStale = DateTime.now().difference(lastSeen).inMinutes > 15;
-
-        final pinColor = isSosActive
-            ? AppColors.sosRed
-            : (isSelf
-                  ? AppColors.primary
-                  : (role == UserRole.parent
-                        ? AppColors.primary
-                        : AppColors.teal));
-
-        return Member(
-          id: doc.id,
-          name: isSelf ? '$name (You)' : name,
-          avatar: role == UserRole.parent ? '👨' : '👩‍🦰',
-          role: role,
-          latitude: lat,
-          longitude: lng,
-          address: lat != null && lng != null
-              ? '${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}'
-              : 'Location Pending',
-          lastSeen: lastSeen,
-          batteryLevel: battery,
-          isCharging: isCharging,
-          speedMph: speed,
-          movementActivity: activity,
-          pinColor: pinColor,
-          isStale: isStale,
-          isSosActive: isSosActive,
-        );
-      }).toList();
+      final now = DateTime.now();
+      return documents
+          .map(
+            (doc) => MemberProfileDecoder.decode(
+              doc.id,
+              doc.data()!,
+              currentUid: currentUid,
+              now: now,
+            ),
+          )
+          .toList();
     });
   }
 

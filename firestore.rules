@@ -21,7 +21,7 @@ service cloud.firestore {
       return (!changed.hasAny(['displayName']) || (data.displayName is string
           && data.displayName.size() > 0 && data.displayName.size() <= 80))
         && (!changed.hasAny(['batteryLevel']) || (data.batteryLevel is int
-          && data.batteryLevel >= 0 && data.batteryLevel <= 100))
+          && data.batteryLevel >= -1 && data.batteryLevel <= 100))
         && (!changed.hasAny(['isCharging']) || data.isCharging is bool)
         && (!changed.hasAny(['speedMph']) || (data.speedMph is number
           && data.speedMph >= 0 && data.speedMph <= 1000))

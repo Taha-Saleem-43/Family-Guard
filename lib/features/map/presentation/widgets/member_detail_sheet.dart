@@ -341,7 +341,7 @@ class MemberDetailSheet extends ConsumerWidget {
           Row(
             children: [
               Text(
-                '$batLevel%',
+                BatteryHelper.label(batLevel),
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: batColor),
               ),
               const SizedBox(width: 6),
@@ -352,7 +352,7 @@ class MemberDetailSheet extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  isCharging ? 'Charging ⚡' : (batLevel < 20 ? 'Low 🪫' : 'Good 🔋'),
+                  batLevel < 0 ? 'Unavailable' : isCharging ? 'Charging ⚡' : (batLevel < 20 ? 'Low 🪫' : 'Good 🔋'),
                   style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: batColor),
                 ),
               ),
@@ -363,7 +363,7 @@ class MemberDetailSheet extends ConsumerWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
-              value: batLevel / 100.0,
+              value: batLevel.clamp(0, 100) / 100.0,
               backgroundColor: batColor.withValues(alpha: 0.2),
               valueColor: AlwaysStoppedAnimation<Color>(batColor),
               minHeight: 4,

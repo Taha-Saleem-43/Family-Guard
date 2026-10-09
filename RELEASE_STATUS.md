@@ -40,6 +40,8 @@ New personal Play accounts currently require at least 12 opted-in testers contin
 
 ## Verification
 
+Live-member reliability: all 79 Flutter tests pass and analysis of all app/test source reports no issues. Legacy malformed member values cannot crash roster decoding; invalid/incomplete coordinates are omitted, missing battery is displayed as Unknown, and future-clock locations are stale. A local minute timer ages freshness without database polling. All 11 rules emulator tests pass; the native -1 unknown battery value is accepted so missing battery cannot reject a valid location update. Circle management, data access hardening and profile validation each passed all three remote CI jobs (Flutter, Firebase and Android).
+
 Profile validation: all 76 Flutter tests pass, analysis reports no issues, and all 11 Firestore rules tests pass. Client updates validate display-name length, battery bounds, charging type, speed, activity and last-seen type. Legacy malformed account fields no longer crash restoration; Firestore and ISO creation timestamps are supported.
 
 Location access hardening: Flutter analysis is clean, all 74 Flutter tests pass, and all 10 Firestore rules emulator tests pass, including child access denial for parent/sibling profiles and parent roster query access.

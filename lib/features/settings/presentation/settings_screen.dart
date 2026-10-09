@@ -445,7 +445,7 @@ class SettingsScreen extends ConsumerWidget {
                             Icon(batIcon, size: 12, color: batColor),
                             const SizedBox(width: 2),
                             Text(
-                              '${member.batteryLevel}%',
+                              BatteryHelper.label(member.batteryLevel),
                               style: TextStyle(
                                 fontSize: 10,
                                 fontWeight: FontWeight.w900,

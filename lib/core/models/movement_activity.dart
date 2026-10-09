@@ -80,7 +80,10 @@ enum MovementActivity {
     if (raw == 'in_vehicle' || raw == 'driving' || speedMph > 10.0) {
       return MovementActivity.driving;
     }
-    if (raw == 'walking' || raw == 'on_foot' || raw == 'running' || (speedMph > 0.5 && speedMph <= 10.0)) {
+    if (raw == 'walking' ||
+        raw == 'on_foot' ||
+        raw == 'running' ||
+        (speedMph > 0.5 && speedMph <= 10.0)) {
       return MovementActivity.walking;
     }
     return MovementActivity.stationary;
@@ -88,13 +91,18 @@ enum MovementActivity {
 }
 
 class BatteryHelper {
+  static String label(int batteryLevel) =>
+      batteryLevel < 0 ? 'Unknown' : '$batteryLevel%';
+
   static Color getColor(int batteryLevel) {
+    if (batteryLevel < 0) return Colors.grey;
     if (batteryLevel >= 50) return AppColors.teal;
     if (batteryLevel >= 20) return const Color(0xFFF59E0B); // Amber
     return AppColors.sosRed;
   }
 
   static IconData getIcon(int batteryLevel, {bool isCharging = false}) {
+    if (batteryLevel < 0) return Icons.battery_unknown_rounded;
     if (isCharging) return Icons.battery_charging_full_rounded;
     if (batteryLevel >= 90) return Icons.battery_full_rounded;
     if (batteryLevel >= 60) return Icons.battery_5_bar_rounded;

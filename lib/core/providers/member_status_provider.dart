@@ -10,6 +10,7 @@ import '../services/firestore_location_service.dart';
 import '../services/location_service.dart';
 import '../services/location_sync_service.dart';
 import '../services/location_fix_policy.dart';
+import '../services/member_profile_decoder.dart';
 import '../theme/app_colors.dart';
 import 'app_state_provider.dart';
 
@@ -23,6 +24,7 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
   StreamSubscription<List<Member>>? _firestoreCircleSub;
   int _circleGeneration = 0;
   Timer? _batteryPollTimer;
+  Timer? _freshnessTimer;
   StreamSubscription<tl.Location>? _locationSub, _motionSub;
 
   MemberStateNotifier(this._ref) : super([]) {
@@ -30,6 +32,20 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
     _listenToDeviceBattery();
     _listenToLocationUpdates();
     _listenToFirestoreCircle();
+    _freshnessTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted) return;
+      final now = DateTime.now();
+      state = state
+          .map(
+            (member) => member.copyWith(
+              isStale:
+                  member.latitude == null ||
+                  member.longitude == null ||
+                  !MemberProfileDecoder.isFresh(member.lastSeen, now),
+            ),
+          )
+          .toList();
+    });
   }
 
   void _initMembers() {
@@ -46,7 +62,7 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
         address: 'Waiting for location',
         lastSeen: DateTime.fromMillisecondsSinceEpoch(0),
         isStale: true,
-        batteryLevel: 0,
+        batteryLevel: -1,
         isCharging: false,
         speedMph: 0.0,
         movementActivity: MovementActivity.stationary,
@@ -333,6 +349,7 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
     _locationSub?.cancel();
     _motionSub?.cancel();
     _batteryPollTimer?.cancel();
+    _freshnessTimer?.cancel();
     _batterySub?.cancel();
     _firestoreCircleSub?.cancel();
     super.dispose();

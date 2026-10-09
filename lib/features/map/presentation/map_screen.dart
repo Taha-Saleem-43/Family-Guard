@@ -482,7 +482,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       Icon(batIcon, size: 10, color: isSos ? Colors.white : batColor),
                       const SizedBox(width: 2),
                       Text(
-                        '${member.batteryLevel}%',
+                        BatteryHelper.label(member.batteryLevel),
                         style: TextStyle(
                           fontSize: 8,
                           fontWeight: FontWeight.w900,
@@ -556,7 +556,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                       Icon(batIcon, size: 13, color: batColor),
                       const SizedBox(width: 3),
                       Text(
-                        '${member.batteryLevel}%',
+                        BatteryHelper.label(member.batteryLevel),
                         style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: batColor),
                       ),
                     ],
