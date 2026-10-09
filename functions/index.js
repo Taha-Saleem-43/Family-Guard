@@ -1,5 +1,6 @@
 const { initializeApp } = require('firebase-admin/app');
 const { getAuth } = require('firebase-admin/auth');
+const { getMessaging } = require('firebase-admin/messaging');
 const { onDocumentCreated } = require('firebase-functions/v2/firestore');
 const { onSchedule } = require('firebase-functions/v2/scheduler');
 const { getFirestore, Timestamp, FieldValue } = require('firebase-admin/firestore');
@@ -23,6 +24,16 @@ exports.processAccountDeletion = onDocumentCreated({ document: 'accountDeletions
 }, (event) => accounts.process(event.params.uid));
 exports.retryAccountDeletions = onSchedule({ schedule: 'every 60 minutes', region: options.region,
   timeoutSeconds: 540, maxInstances: 1 }, () => accounts.retryPending());
+const push = require('./features/push').createPushHandlers(db, getMessaging());
+exports.registerPushDevice = onCall(options, push.register);
+exports.unregisterPushDevice = onCall(options, push.unregister);
+exports.acknowledgeSosPush = onCall(options, push.acknowledge);
+exports.enqueueSosPush = onDocumentCreated({ document: 'sos_alerts/{alertId}', region: options.region,
+  retry: true, timeoutSeconds: 120, maxInstances: 5 }, (event) => push.enqueue(event.params.alertId));
+exports.deliverSosPush = onDocumentCreated({ document: 'sosPushDeliveries/{deliveryId}', region: options.region,
+  retry: true, timeoutSeconds: 120, maxInstances: 10 }, (event) => push.process(event.params.deliveryId));
+exports.retrySosPushDeliveries = onSchedule({ schedule: 'every 1 minutes', region: options.region,
+  timeoutSeconds: 120, maxInstances: 1 }, () => push.retryPending());
 
 function validate(fn, value) {
   try { return fn(value); } catch (error) {

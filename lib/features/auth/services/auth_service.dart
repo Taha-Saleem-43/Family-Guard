@@ -6,6 +6,7 @@ import 'package:tracelet/tracelet.dart' as tl;
 import '../../../core/models/member.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/user_session_service.dart';
+import '../../../core/services/push_runtime.dart';
 import '../domain/circle_model.dart';
 import '../domain/user_account_model.dart';
 
@@ -130,6 +131,7 @@ class AuthService {
 
   Future<void> signOut() async {
     final uid = _auth.currentUser?.uid;
+    if (uid != null) await PushRuntime.active?.coordinator.detach(uid);
     await LocationService.instance.stop();
     if (_auth.currentUser?.uid != uid) {
       throw StateError('Your account changed.');
@@ -159,6 +161,7 @@ class AuthService {
 
   Future<void> pauseDeletionSharing(String uid) async {
     _requireCurrentUid(uid);
+    await PushRuntime.active?.coordinator.detach(uid);
     await LocationService.instance.stop();
     _requireCurrentUid(uid);
   }

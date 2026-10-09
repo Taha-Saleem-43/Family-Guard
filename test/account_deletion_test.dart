@@ -11,6 +11,7 @@ void main() {
   test('local deletion preserves similarly prefixed accounts', () async {
     SharedPreferences.setMockInitialValues({
       'fg_active_user_uid': 'a_b',
+      'fg_push_token_account_uid': 'a_b',
       'fg_user_session_a_role': 'parent',
       'fg_user_session_a_b_role': 'child',
       'sos.dismissed.a.circle': ['old'],
@@ -23,6 +24,7 @@ void main() {
     expect(prefs.getString('fg_user_session_a_b_role'), 'child');
     expect(prefs.getStringList('sos.dismissed.a.b.circle'), ['keep']);
     expect(prefs.getString('fg_active_user_uid'), 'a_b');
+    expect(prefs.getString('fg_push_token_account_uid'), 'a_b');
   });
   testWidgets('cancel does not request deletion; confirmation verifies once', (
     tester,

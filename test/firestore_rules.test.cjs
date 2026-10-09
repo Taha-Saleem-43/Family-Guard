@@ -20,6 +20,20 @@ before(async () => {
 });
 after(async () => { if (env) await env.cleanup(); });
 const dbFor = (uid) => env.authenticatedContext(uid).firestore();
+test('push tokens stay private and only the SOS sender can read delivery status', async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'pushDevices/private-device'), { uid: 'childA', token: 'secret-token' });
+    await setDoc(doc(context.firestore(), 'sosPushDeliveries/private-delivery'), {
+      alertId: 's', circleId: 'a', recipientUid: 'parentA', status: 'sent',
+    });
+  });
+  await assertFails(getDoc(doc(dbFor('childA'), 'pushDevices/private-device')));
+  await assertFails(getDoc(doc(dbFor('parentA'), 'pushDevices/private-device')));
+  await assertFails(setDoc(doc(dbFor('childA'), 'pushDevices/new-device'), { uid: 'childA', token: 'forged' }));
+  await assertSucceeds(getDocs(query(collection(dbFor('childA'), 'sosPushDeliveries'), where('alertId', '==', 's'), where('circleId', '==', 'a'))));
+  await assertFails(getDoc(doc(dbFor('parentA'), 'sosPushDeliveries/private-delivery')));
+  await assertFails(updateDoc(doc(dbFor('childA'), 'sosPushDeliveries/private-delivery'), { openedAt: Timestamp.now() }));
+});
 test('deletion tombstone blocks cached credentials and profile recreation', async () => {
   await env.withSecurityRulesDisabled(async (context) => {
     await setDoc(doc(context.firestore(), 'accountDeletions/deleting'), { status: 'pending' });

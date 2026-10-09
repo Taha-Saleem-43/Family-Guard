@@ -96,6 +96,8 @@ function createAccountDeletionHandlers(db, auth) {
         await db.doc(`locations/${uid}`).delete();
         await deleteQuery(db.collection('sos_alerts').where('senderId', '==', uid));
         await deleteQuery(db.collection('places').where('createdBy', '==', uid));
+        await deleteQuery(db.collection('pushDevices').where('uid', '==', uid));
+        await deleteQuery(db.collection('sosPushDeliveries').where('recipientUid', '==', uid));
         for (const collection of ['placeEvents', 'sosEvents']) {
           for (const field of ['userId', 'uid', 'memberId', 'senderId']) {
             await deleteQuery(db.collection(collection).where(field, '==', uid));

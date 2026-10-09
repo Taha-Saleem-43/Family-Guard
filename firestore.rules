@@ -78,6 +78,11 @@ service cloud.firestore {
       allow read: if member(resource.data.circleId);
       // Authenticated callables own sender identity, idempotency and atomic profile state.
     }
+    match /sosPushDeliveries/{deliveryId} {
+      allow read: if member(resource.data.circleId)
+        && get(/databases/$(database)/documents/sos_alerts/$(resource.data.alertId)).data.circleId == resource.data.circleId
+        && get(/databases/$(database)/documents/sos_alerts/$(resource.data.alertId)).data.senderId == request.auth.uid;
+    }
     match /placeEvents/{eventId} { allow read: if member(resource.data.circleId); }
     match /sosEvents/{eventId} { allow read: if member(resource.data.circleId); }
     // All membership mutations, invite secrets, rate limits and unspecified paths are backend-only.

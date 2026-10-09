@@ -31,13 +31,15 @@ test('deletion detaches only its member and preserves other family data', async 
   await db.doc('locationHistory/keep-child/points/one').set({ timestamp: Timestamp.now() });
   await db.doc('sos_alerts/deleted-alert').set({ senderId: 'delete-parent' });
   await db.doc('places/deleted-place').set({ createdBy: 'delete-parent' });
+  await db.doc('pushDevices/deleted-device').set({ uid: 'delete-parent', token: 'mock-token' });
+  await db.doc('sosPushDeliveries/deleted-job').set({ recipientUid: 'delete-parent' });
   await handlers.request(request('delete-parent'));
   assert.equal((await db.doc('users/delete-parent').get()).data().deletionRequested, true);
   const family = (await db.doc('circles/deletion-family').get()).data();
   assert.deepEqual(family.memberIds, ['keep-child']);
   assert.equal(family.requiresParent, true);
   await handlers.process('delete-parent');
-  for (const path of ['users/delete-parent', 'locationHistory/delete-parent/points/one', 'sos_alerts/deleted-alert', 'places/deleted-place']) {
+  for (const path of ['users/delete-parent', 'locationHistory/delete-parent/points/one', 'sos_alerts/deleted-alert', 'places/deleted-place', 'pushDevices/deleted-device', 'sosPushDeliveries/deleted-job']) {
     assert.equal((await db.doc(path).get()).exists, false, path);
   }
   assert.equal((await db.doc('locationHistory/keep-child/points/one').get()).exists, true);

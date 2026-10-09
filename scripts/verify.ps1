@@ -29,6 +29,8 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Invite rotation integration tests failed' }
   npm.cmd run test:accounts
   if ($LASTEXITCODE -ne 0) { throw 'Account deletion integration tests failed' }
+  npm.cmd run test:push
+  if ($LASTEXITCODE -ne 0) { throw 'Push delivery integration tests failed' }
 } finally {
   Pop-Location
 }

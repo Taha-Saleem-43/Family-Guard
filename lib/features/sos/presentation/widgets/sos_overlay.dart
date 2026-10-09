@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'push_delivery_status.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/theme/app_colors.dart';
@@ -252,6 +253,10 @@ class _SOSOverlayState extends ConsumerState<SOSOverlay> {
                   height: 1.4,
                 ),
               ),
+              if (sosState.activeAlertId != null) ...[
+                const SizedBox(height: 12),
+                PushDeliveryStatus(alertId: sosState.activeAlertId!),
+              ],
               const Spacer(),
               SizedBox(
                 width: double.infinity,

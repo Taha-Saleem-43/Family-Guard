@@ -11,6 +11,7 @@ import '../../map/presentation/widgets/member_detail_sheet.dart';
 import 'permission_status_card.dart';
 import 'invite_rotation_control.dart';
 import 'account_deletion_control.dart';
+import 'push_status_card.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -281,7 +282,7 @@ class SettingsScreen extends ConsumerWidget {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(children: [const PermissionStatusCard()]),
+              child: Column(children: [const PermissionStatusCard(), const PushStatusCard()]),
             ),
           ),
           const SizedBox(height: 24),

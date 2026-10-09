@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,8 @@ import 'core/presentation/local_privacy_gate.dart';
 import 'core/services/firestore_privacy_service.dart';
 import 'core/services/location_service.dart';
 import 'core/services/location_sync_service.dart';
+import 'core/services/push_runtime.dart';
+import 'core/models/push_envelope.dart';
 import 'core/theme/app_theme.dart';
 import 'features/home/presentation/main_shell.dart';
 import 'features/onboarding/presentation/onboarding_screen.dart';
@@ -54,6 +57,30 @@ void backgroundLocationHandler(tl.HeadlessEvent event) async {
   }
 }
 
+@pragma('vm:entry-point')
+Future<void> backgroundPushHandler(RemoteMessage message) async {
+  final envelope = PushEnvelope.parse(message.data);
+  if (envelope == null) return;
+  try {
+    WidgetsFlutterBinding.ensureInitialized();
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+    }
+    await FirebaseAppCheck.instance.activate(
+      androidProvider: kDebugMode
+          ? AndroidProvider.debug
+          : AndroidProvider.playIntegrity,
+      appleProvider: kDebugMode ? AppleProvider.debug : AppleProvider.appAttest,
+    );
+    await FirebaseAuth.instance.authStateChanges().first;
+    await PushRuntime.acknowledge(envelope, 'received');
+  } catch (_) {
+    /* Receipt is best effort; acceptance is never labelled delivery. */
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -63,6 +90,7 @@ void main() async {
   await tl.Tracelet.registerHeadlessTask(backgroundLocationHandler);
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  FirebaseMessaging.onBackgroundMessage(backgroundPushHandler);
   await FirebaseAppCheck.instance.activate(
     androidProvider: kDebugMode
         ? AndroidProvider.debug
@@ -84,10 +112,62 @@ class FamilyGuardApp extends ConsumerStatefulWidget {
   ConsumerState<FamilyGuardApp> createState() => _FamilyGuardAppState();
 }
 
-class _FamilyGuardAppState extends ConsumerState<FamilyGuardApp> {
+class _FamilyGuardAppState extends ConsumerState<FamilyGuardApp>
+    with WidgetsBindingObserver {
   bool _restoring = true;
   String? _restoreError;
   StreamSubscription<User?>? _authSubscription;
+  PushEnvelope? _pendingPush;
+  int _pushOpenGeneration = 0;
+
+  Future<void> _openPush(PushEnvelope envelope) async {
+    if (!mounted) return;
+    final account = ref.read(appStateProvider);
+    if (_restoring || account.stage != AppStage.main) {
+      _pendingPush = envelope;
+      return;
+    }
+    _pendingPush = null;
+    if (account.userId != envelope.recipientUid ||
+        account.circleId != envelope.circleId) {
+      return;
+    }
+    final generation = ++_pushOpenGeneration;
+    try {
+      final active = await PushRuntime.acknowledge(envelope, 'opened');
+      if (!mounted || generation != _pushOpenGeneration) return;
+      final current = ref.read(appStateProvider);
+      if (active &&
+          current.userId == envelope.recipientUid &&
+          current.circleId == envelope.circleId) {
+        ref.read(appStateProvider.notifier).setActiveTab(AppTab.alerts);
+      }
+    } catch (_) {
+      /* The live emergency stream can still present verified alerts. */
+    }
+  }
+
+  void _bindPush(AppState account) {
+    if (Firebase.apps.isEmpty) return;
+    final session = !_restoring && account.stage == AppStage.main;
+    unawaited(
+      ref
+          .read(pushCoordinatorProvider.notifier)
+          .bind(
+            session ? account.userId : null,
+            session ? account.circleId : null,
+          ),
+    );
+    final pending = _pendingPush;
+    if (session && pending != null) unawaited(_openPush(pending));
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && Firebase.apps.isNotEmpty) {
+      unawaited(ref.read(pushCoordinatorProvider.notifier).refresh());
+    }
+  }
 
   Future<void> _restore() async {
     setState(() {
@@ -111,8 +191,16 @@ class _FamilyGuardAppState extends ConsumerState<FamilyGuardApp> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     Future.microtask(_restore);
     if (Firebase.apps.isNotEmpty) {
+      ref.read(pushCoordinatorProvider);
+      unawaited(
+        PushRuntime.active?.start(
+              (envelope) => unawaited(_openPush(envelope)),
+            ) ??
+            Future.value(),
+      );
       _authSubscription = FirebaseAuth.instance.authStateChanges().listen((
         user,
       ) {
@@ -126,13 +214,19 @@ class _FamilyGuardAppState extends ConsumerState<FamilyGuardApp> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _pushOpenGeneration++;
     _authSubscription?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<AppState>(appStateProvider, (_, next) => _bindPush(next));
     final appState = ref.watch(appStateProvider);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _bindPush(ref.read(appStateProvider));
+    });
 
     return MaterialApp(
       title: 'Family Guard',

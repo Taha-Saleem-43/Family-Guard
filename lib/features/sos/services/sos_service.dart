@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import '../models/sos_alert.dart';
 import 'sos_request_store.dart';
+import '../models/push_delivery_summary.dart';
 
 typedef SOSCallable =
     Future<Map<String, dynamic>> Function(
@@ -137,6 +138,27 @@ class SOSService {
           (snapshot) => snapshot.docs
               .map((doc) => SOSAlert.fromMap(doc.id, doc.data()))
               .toList(),
+        );
+  }
+
+  Stream<PushDeliverySummary> streamPushDeliverySummary(
+    String alertId,
+    String circleId,
+  ) {
+    if (_firestore == null || alertId.isEmpty || circleId.isEmpty) {
+      return Stream.value(const PushDeliverySummary());
+    }
+    return _firestore
+        .collection('sosPushDeliveries')
+        .where('alertId', isEqualTo: alertId)
+        .where('circleId', isEqualTo: circleId)
+        .limit(200)
+        .snapshots(includeMetadataChanges: true)
+        .where((snapshot) => !snapshot.metadata.isFromCache)
+        .map(
+          (snapshot) => PushDeliverySummary.fromJobs(
+            snapshot.docs.map((doc) => doc.data()),
+          ),
         );
   }
 }

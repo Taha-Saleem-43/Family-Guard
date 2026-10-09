@@ -23,6 +23,8 @@ Implemented foundations:
 
 The new client requires `createCircle`, `joinCircle`, `triggerSos`, `resolveSos` and `rotateCircleInvites` Cloud Functions. Deploy compatible functions/rules/indexes and register App Check together in a controlled staging project first. Release uses Play Integrity; development uses registered App Check debug tokens. Never commit debug tokens or service-account credentials. Functions currently use `us-central1`, matching the client default; review region choice before production.
 
+Account deletion additionally requires its request/worker/sweeper functions; SOS push requires registration, acknowledgement, fan-out, delivery and retry functions. Deploy these with their TTL/index configuration as documented in `docs/ACCOUNT_DELETION.md` and `docs/SOS_PUSH.md`. Local emulator checks do not deploy any backend or send real notifications.
+
 Existing circle invite codes are not automatically migrated. Existing roles and memberships were writable under the old rules and require an owner-reviewed migration before they can be trusted. Move legacy invite secrets out of public circle documents and issue new private invite records. Do not deploy this ruleset over existing user data without checking this migration.
 
 History readers now query Firestore timestamps and parents filter by the recorded circle. Deploy the points circleId/timestamp composite index with the client and rules. Legacy points without circle provenance remain owner-only; only backfill a circle when its original provenance is verified, never infer it from current membership. Old string timestamps/expiry fields must be migrated with a backup and a dry run, or explicitly archived as pre-release data after owner approval. TTL must be enabled for `points.expireAt`, `inviteAttempts.expireAt`, `circleInvites.expiresAt` and `sos_alerts.expireAt` (set only after resolution; active emergencies do not expire silently); it is asynchronous and has billing implications. Permanent user profiles have no TTL.
@@ -30,7 +32,7 @@ History readers now query Firestore timestamps and parents filter by the recorde
 ## Remaining release gates
 
 - Production Firebase/Play Console access, approved permanent package ID, release signing, app-check registration and deployment review.
-- Push token lifecycle, backend SOS push fan-out, background notification handling, durable offline SOS state restoration and delivery acknowledgement.
+- SOS push staging/device verification, queue monitoring and load benchmarks; durable offline SOS state restoration.
 - Native geofence transition processing and alerts; do not advertise it as working until tested end to end.
 - Durable offline upload storage, retry/backoff and cross-isolate/device ordering reconciliation, accurate connectivity/freshness reporting and adaptive battery tuning. Current serialization is process-local and does not establish durable recovery by itself.
 - Legacy history migration UX and performance benchmarks for very large loaded routes.
@@ -41,6 +43,8 @@ History readers now query Firestore timestamps and parents filter by the recorde
 New personal Play accounts currently require at least 12 opted-in testers continuously for 14 days before applying for production access. See [Google's testing requirements](https://support.google.com/googleplay/android-developer/answer/14151465). A closed-test build is the next-week target; public availability depends on account eligibility and review.
 
 ## Verification
+
+SOS push delivery: the full 111-test Flutter suite passed and app/test analysis is clean. Push tokens are backend-only; device registration uses installation proof and persistent version fencing. Durable per-device jobs retry transient failures, disable invalid tokens safely and cancel sends after membership/account changes. Sender delivery status distinguishes service acceptance from receipt/opening. Nine push emulator tests and 15 security-rule tests passed; native FCM transport still requires staging and devices. See `docs/SOS_PUSH.md` for deployment and remaining gates.
 
 Auth session boundaries: the full 101-test Flutter suite passed, followed by all five targeted account-switch regressions (three additional callable races). Final app/test analysis is clean. All 21 backend domain/membership/SOS/invite tests passed, including rejection of mismatched expected identities across five endpoints. Profile reads and circle operations discard late results after a UID switch; a deleted old profile cannot sign out a new account. New requests send an expected UID while omitted fields remain compatible with earlier clients. Deploy the matching callable changes with the app.
 

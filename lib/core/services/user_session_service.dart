@@ -9,6 +9,10 @@ class UserSessionService {
   static Future<void> deleteUserSession(String uid) async {
     await PreferencesSOSDismissalStore.drainPendingWrites();
     final prefs = await SharedPreferences.getInstance();
+    if (prefs.getString('fg_push_token_account_uid') == uid &&
+        !await prefs.remove('fg_push_token_account_uid')) {
+      throw StateError('Could not clear local device account data.');
+    }
     if (prefs.getString(_activeUidKey) == uid) {
       await prefs.remove(_activeUidKey);
     }
