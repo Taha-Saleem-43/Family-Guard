@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/app_state_provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/services/sharing_consent_service.dart';
 import '../../auth/domain/circle_model.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../../settings/presentation/account_deletion_control.dart';
@@ -11,7 +12,8 @@ import 'permission_gate_screen.dart';
 enum OnboardingStep { splash, carousel, auth, role, createCircle, circleCreated, joinCircle, childConsent, permissions }
 
 class OnboardingScreen extends ConsumerStatefulWidget {
-  const OnboardingScreen({super.key});
+  const OnboardingScreen({super.key, this.consentService});
+  final SharingConsentService? consentService;
 
   @override
   ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
@@ -112,10 +114,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
         );
         // Signed-in user — check if they already have a circle
         if (account.circleId != null && account.circleId!.isNotEmpty) {
-          // Already in a circle — go straight to main app
-          ref.read(appStateProvider.notifier).completeOnboarding(
-            account.role == UserRole.parent ? UserRole.parent : UserRole.child,
-          );
+          if (account.role == UserRole.child) {
+            setState(() {
+              _pendingRole = UserRole.child;
+              _currentStep = OnboardingStep.childConsent;
+            });
+          } else {
+            ref.read(appStateProvider.notifier).completeOnboarding(UserRole.parent);
+          }
         } else {
           // Signed in but no circle yet — let them create or join
           setState(() => _currentStep = OnboardingStep.role);
@@ -190,13 +196,35 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
       );
       setState(() {
         _pendingRole = role;
-        // Children already saw the consent screen; both roles go to permissions.
-        _currentStep = OnboardingStep.permissions;
+        _currentStep = role == UserRole.child
+            ? OnboardingStep.childConsent : OnboardingStep.permissions;
       });
     } catch (e) {
       if (mounted) { setState(() => _errorMessage = e.toString().replaceAll('Exception: ', '')); }
     } finally {
       if (mounted) { setState(() => _isLoading = false); }
+    }
+  }
+
+  Future<void> _acceptExistingSharing() async {
+    if (_isLoading) return;
+    final account = ref.read(appStateProvider);
+    setState(() => _isLoading = true);
+    try {
+      await (widget.consentService ?? SharingConsentService()).accept(account.userId, account.circleId);
+      if (!mounted || ref.read(appStateProvider).userId != account.userId ||
+          ref.read(appStateProvider).circleId != account.circleId) {
+        return;
+      }
+      setState(() => _currentStep = OnboardingStep.permissions);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Could not save consent. Please try again.'),
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -1055,7 +1083,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     width: double.infinity,
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : hasCircle
-                          ? () => setState(() => _currentStep = OnboardingStep.permissions)
+                          ? _acceptExistingSharing
                           : _handleJoinCircle,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppColors.teal,

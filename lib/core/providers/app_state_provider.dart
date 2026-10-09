@@ -7,6 +7,7 @@ import '../../features/auth/domain/user_account_model.dart';
 import '../../features/auth/services/auth_service.dart';
 import '../models/member.dart';
 import '../services/location_service.dart';
+import '../services/sharing_consent_service.dart';
 import '../models/account_scope.dart';
 export '../models/member.dart' show UserRole;
 
@@ -87,15 +88,19 @@ class AppStateNotifier extends StateNotifier<AppState> {
     circleName: 'Family Circle',
   );
   AppStateNotifier({
+    Future<bool> Function(String, String)? sharingConsent,
     Future<UserAccountModel?> Function()? accountLoader,
     Stream<AccountScope> Function(String)? profileStream,
     String? Function()? currentUid,
     Future<void> Function(String)? stopSharing,
-  }) : _accountLoader = accountLoader,
+  }) : _sharingConsent = sharingConsent ?? SharingConsentService().accepted,
+       _accountLoader = accountLoader,
        _profileStream = profileStream,
        _currentUid = currentUid,
        _stopSharing = stopSharing,
        super(initial);
+
+  final Future<bool> Function(String, String) _sharingConsent;
 
   void _watchOwnProfile() {
     if (state.stage != AppStage.main) return;
@@ -367,6 +372,16 @@ class AppStateNotifier extends StateNotifier<AppState> {
       role: account.role,
     );
     if (account.circleId?.isNotEmpty != true) return false;
+    if (account.role == UserRole.child) {
+      final currentGeneration = _sessionGeneration;
+      final accepted = await _sharingConsent(account.uid, account.circleId!);
+      if (!mounted ||
+          currentGeneration != _sessionGeneration ||
+          state.userId != account.uid ||
+          !accepted) {
+        return false;
+      }
+    }
     completeOnboarding(account.role);
     return true;
   }

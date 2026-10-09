@@ -15,7 +15,10 @@ void main() {
   test(
     'restores only the verified account returned by the identity boundary',
     () async {
-      final notifier = AppStateNotifier(accountLoader: () async => account);
+      final notifier = AppStateNotifier(
+        accountLoader: () async => account,
+        sharingConsent: (_, _) async => true,
+      );
       addTearDown(notifier.dispose);
       expect(await notifier.checkRestoreSession(), isTrue);
       expect(notifier.state.userId, 'verified');

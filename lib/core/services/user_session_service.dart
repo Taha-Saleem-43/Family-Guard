@@ -36,6 +36,7 @@ class UserSessionService {
         'parentCode',
         'idToken',
         'tokenSavedAt',
+        'sharingConsent',
       ])
         _key(uid, suffix),
     };
@@ -149,6 +150,7 @@ class UserSessionService {
       await prefs.remove(_key(uid, 'parentCode'));
       await prefs.remove(_key(uid, 'idToken'));
       await prefs.remove(_key(uid, 'tokenSavedAt'));
+      await prefs.remove(_key(uid, 'sharingConsent'));
     } catch (_) {}
   }
 }

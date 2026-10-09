@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tracelet/tracelet.dart' as tl;
 import 'location_sync_service.dart';
 import 'tracking_lifecycle.dart';
+import 'sharing_consent_service.dart';
 
 /// Owns native tracking lifecycle and forwards fixes to the shared sync service.
 /// Diagnostic fix logging is bounded and enabled only in debug builds.
@@ -25,6 +26,7 @@ class LocationService {
   late final _lifecycle = TrackingLifecycle(
     currentUid: () => FirebaseAuth.instance.currentUser?.uid,
     verifyScope: (uid, circleId) async {
+      if (!await SharingConsentService().accepted(uid, circleId)) return false;
       if (FirebaseAuth.instance.currentUser?.metadata.lastSignInTime == null) {
         return false;
       }
