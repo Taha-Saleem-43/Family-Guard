@@ -6,11 +6,37 @@ import '../models/location_history_point.dart';
 import '../models/member.dart';
 import '../models/movement_activity.dart';
 import 'member_profile_decoder.dart';
+import 'latest_value_queue.dart';
+
+typedef _LocationUpload = ({
+  String uid,
+  double latitude,
+  double longitude,
+  double speedMph,
+  MovementActivity activity,
+  int batteryLevel,
+  bool isCharging,
+  DateTime capturedAt,
+});
 
 class FirestoreLocationService {
   final FirebaseFirestore? _firestore;
 
-  Future<void> _pendingUpload = Future.value();
+  late final _uploads = LatestValueQueue<_LocationUpload>(
+    (fix) => _updateUserLocation(
+      uid: fix.uid,
+      latitude: fix.latitude,
+      longitude: fix.longitude,
+      speedMph: fix.speedMph,
+      activity: fix.activity,
+      batteryLevel: fix.batteryLevel,
+      isCharging: fix.isCharging,
+      capturedAt: fix.capturedAt,
+    ),
+  );
+  String? _lastReceivedUid;
+  DateTime? _lastReceivedAt;
+  DateTime? _lastUploadedCapturedAt;
   DateTime? _lastUploadTime;
   String? _lastUploadedUid;
   String? _circleLookupUid;
@@ -27,6 +53,7 @@ class FirestoreLocationService {
           (Firebase.apps.isNotEmpty ? FirebaseFirestore.instance : null);
 
   DateTime? get lastUploadTime => _lastUploadTime;
+  DateTime? get lastUploadedCapturedAt => _lastUploadedCapturedAt;
   String? get lastUploadedUid => _lastUploadedUid;
   double? get lastUploadedLat => _lastUploadedLat;
   double? get lastUploadedLng => _lastUploadedLng;
@@ -34,7 +61,7 @@ class FirestoreLocationService {
   int? get lastUploadedBattery => _lastUploadedBattery;
   bool? get lastUploadedCharging => _lastUploadedCharging;
 
-  /// Serialize callbacks so each evaluates the last acknowledged write.
+  /// Serialize writes while coalescing waiting callbacks to the newest fix.
   Future<void> updateUserLocation({
     required String uid,
     required double latitude,
@@ -43,20 +70,38 @@ class FirestoreLocationService {
     required MovementActivity activity,
     required int batteryLevel,
     required bool isCharging,
+    DateTime? capturedAt,
   }) {
-    final next = _pendingUpload.then(
-      (_) => _updateUserLocation(
-        uid: uid,
-        latitude: latitude,
-        longitude: longitude,
-        speedMph: speedMph,
-        activity: activity,
-        batteryLevel: batteryLevel,
-        isCharging: isCharging,
-      ),
-    );
-    _pendingUpload = next.catchError((Object _) {});
-    return next;
+    final capture = (capturedAt ?? DateTime.now()).toUtc();
+    final age = DateTime.now().toUtc().difference(capture);
+    if (uid.isEmpty ||
+        !latitude.isFinite ||
+        !longitude.isFinite ||
+        latitude.abs() > 90 ||
+        longitude.abs() > 180 ||
+        age > const Duration(minutes: 2) ||
+        age < const Duration(seconds: -30) ||
+        (_lastReceivedUid == uid &&
+            _lastReceivedAt != null &&
+            capture.isBefore(_lastReceivedAt!))) {
+      return Future.value();
+    }
+    _lastReceivedUid = uid;
+    _lastReceivedAt = capture;
+    return _uploads.submit((
+      uid: uid,
+      latitude: latitude,
+      longitude: longitude,
+      speedMph: speedMph.isFinite && speedMph >= 0 && speedMph <= 1000
+          ? speedMph
+          : 0,
+      activity: activity,
+      batteryLevel: batteryLevel >= -1 && batteryLevel <= 100
+          ? batteryLevel
+          : -1,
+      isCharging: isCharging,
+      capturedAt: capture,
+    ));
   }
 
   /// Uploads user location and status to Firestore with 3-layer throttling
@@ -68,6 +113,7 @@ class FirestoreLocationService {
     required MovementActivity activity,
     required int batteryLevel,
     required bool isCharging,
+    required DateTime capturedAt,
   }) async {
     if (uid.isEmpty ||
         !latitude.isFinite ||
@@ -140,7 +186,7 @@ class FirestoreLocationService {
           _circleLookupUid = uid;
           _uploadCircleId = circle;
         }
-        final expireAt = now.add(const Duration(days: 30));
+        final expireAt = capturedAt.add(const Duration(days: 30));
 
         final batch = _firestore.batch();
         batch.set(_firestore.collection('users').doc(uid), {
@@ -150,32 +196,34 @@ class FirestoreLocationService {
           'movementActivity': activity.name,
           'batteryLevel': batteryLevel,
           'isCharging': isCharging,
-          'lastSeen': now.toIso8601String(),
+          'lastSeen': capturedAt.toIso8601String(),
         }, SetOptions(merge: true));
 
         // Record history point in locationHistory/{uid}/points
+        final historyRef = _firestore
+            .collection('locationHistory')
+            .doc(uid)
+            .collection('points')
+            .doc();
         final historyPoint = LocationHistoryPoint(
-          id: now.millisecondsSinceEpoch.toString(),
+          id: historyRef.id,
           latitude: latitude,
           longitude: longitude,
           speedMph: speedMph,
           movementActivity: activity,
-          timestamp: now,
+          timestamp: capturedAt,
           expireAt: expireAt,
         );
 
-        batch.set(
-          _firestore
-              .collection('locationHistory')
-              .doc(uid)
-              .collection('points')
-              .doc(historyPoint.id),
-          {...historyPoint.toMap(), 'circleId': _uploadCircleId},
-        );
+        batch.set(historyRef, {
+          ...historyPoint.toMap(),
+          'circleId': _uploadCircleId,
+        });
         await batch.commit();
       }
 
       _lastUploadTime = now;
+      _lastUploadedCapturedAt = capturedAt;
       _lastUploadedUid = uid;
       _lastUploadedLat = latitude;
       _lastUploadedLng = longitude;

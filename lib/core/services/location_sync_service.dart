@@ -38,6 +38,7 @@ class LocationSyncService {
           ? -1
           : (location.battery.level * 100).round(),
       isCharging: location.battery.isCharging,
+      capturedAt: captured,
     );
   }
 }

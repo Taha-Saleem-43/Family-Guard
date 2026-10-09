@@ -8,7 +8,7 @@ Implemented foundations:
 - Parents can replace both invite codes atomically from settings; previous codes stop working and existing memberships remain unchanged. Expiry comes from the private server record. Private code fields clear on user/circle/role changes, and each subscription generation rejects stale callbacks.
 - Firestore rules for family isolation, immutable client membership/roles, parent-managed places and sender-owned SOS resolution.
 - Firebase Auth-backed restoration, logout stops native tracking, display-only session preferences and removal of previously cached JWTs.
-- Shared foreground/headless upload entry point, fix validation, serialized atomic live/history writes and removal of upload-time client cleanup.
+- Shared foreground/headless upload entry point, fix validation, serialized atomic live/history writes with one newest waiting fix and removal of upload-time client cleanup.
 - Timestamp history expiry fields and TTL configuration; honest empty history and real permission queries.
 - History query failures propagate to a retryable error panel; loading and empty data have separate states. Refresh waits for the query and works with short or empty lists. History member selection resets across account/circle changes, and children query only their own history. History map controllers are disposed with their screen.
 - Location-bearing profiles are readable only by their owner or a parent in the same circle. Child subscriptions read one profile; parent subscriptions retain the family roster. Role changes restart subscriptions and stale callbacks are rejected.
@@ -31,7 +31,7 @@ History readers now query Firestore timestamps and parents filter by the recorde
 - Production Firebase/Play Console access, approved permanent package ID, release signing, app-check registration and deployment review.
 - Push token lifecycle, backend SOS push fan-out, background notification handling, durable offline SOS state restoration and delivery acknowledgement.
 - Native geofence transition processing and alerts; do not advertise it as working until tested end to end.
-- Durable offline upload queue/coalescing, timestamp/ordering reconciliation, accurate connectivity/freshness reporting and adaptive battery tuning. Current serialization is process-local and does not establish durable recovery by itself.
+- Durable offline upload storage, retry/backoff and cross-isolate/device ordering reconciliation, accurate connectivity/freshness reporting and adaptive battery tuning. Current serialization is process-local and does not establish durable recovery by itself.
 - History cursor pagination and migration UX. Current query is bounded to 1,000 points; a full pagination interface is still needed.
 - Account deletion and membership removal backend flows.
 - Android target API/release identity/signing checks, supported-device background/boot/permission-revocation tests and battery benchmarks.
@@ -40,6 +40,8 @@ History readers now query Firestore timestamps and parents filter by the recorde
 New personal Play accounts currently require at least 12 opted-in testers continuously for 14 days before applying for production access. See [Google's testing requirements](https://support.google.com/googleplay/android-developer/answer/14151465). A closed-test build is the next-week target; public availability depends on account eligibility and review.
 
 ## Verification
+
+Upload coalescing: all 87 Flutter tests pass and app/test analysis is clean. One write runs at a time with only the newest pending payload retained; a blocked-upload test collapses 500 callbacks to the newest waiting fix and verifies failure recovery. Native capture times are preserved in lastSeen/history/expiry, older out-of-order fixes are ignored, and history uses unique document IDs. Coalescing is process-local and intentionally supersedes intermediate waiting fixes; it is not durable offline recovery.
 
 Location refresh efficiency: the existing full 83-test suite passed after the optimization, followed by all 4 decoder regressions including the newly added unchanged-state/partial-aging test. App/test analysis and final test analysis are clean. Freshness checks retain list/member identity and publish only when a stale status changes, avoiding recurring map rebuilds.
 
