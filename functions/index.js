@@ -55,6 +55,13 @@ function validate(fn, value) {
   }
 }
 
+// A new circle must receive only fixes captured after its own sharing consent.
+function clearLiveLocation() {
+  return Object.fromEntries(['latitude', 'longitude', 'speedMph', 'movementActivity',
+    'lastSeen', 'lastLocationCapturedAt', 'lastLocationPointId', 'batteryLevel', 'isCharging']
+    .map((field) => [field, FieldValue.delete()]));
+}
+
 exports.createCircle = onCall(options, async (request) => {
   const uid = authenticated(request);
   const name = validate(circleName, request.data?.circleName);
@@ -85,7 +92,8 @@ exports.createCircle = onCall(options, async (request) => {
         circleId: circle.id, role, expiresAt, revoked: false,
       });
     }
-    tx.update(profile, { circleId: circle.id, role: 'parent' });
+    tx.update(profile, { ...clearLiveLocation(), circleId: circle.id, role: 'parent' });
+    tx.delete(db.doc(`locations/${uid}`));
   });
   return result;
 });
@@ -137,7 +145,9 @@ exports.joinCircle = onCall(options, async (request) => {
     }
     // An existing member cannot change role by redeeming a second invite.
     const role = user.data().circleId ? user.data().role : data.role;
-    tx.update(profile, { circleId: data.circleId, role });
+    const newMembership = !user.data().circleId;
+    tx.update(profile, { ...(newMembership ? clearLiveLocation() : {}), circleId: data.circleId, role });
+    if (newMembership) tx.delete(db.doc(`locations/${uid}`));
     tx.update(circle, { memberIds: FieldValue.arrayUnion(uid),
       ...(role === 'parent' ? { requiresParent: false } : {}) });
     return { circleId: data.circleId, role };

@@ -27,6 +27,8 @@ test('unauthenticated creation and joins are rejected', async () => {
   await assert.rejects(handlers.joinCircle.run(request(null, { inviteCode: 'FAMILY-0000000000000000' })), { code: 'unauthenticated' });
 });
 test('creation atomically assigns creator membership and keeps invites private', async () => {
+  await db.doc('users/creator').update({ latitude: 1, longitude: 2, lastSeen: 'old', lastLocationPointId: 'old' });
+  await db.doc('locations/creator').set({ latitude: 1, longitude: 2 });
   created = await handlers.createCircle.run(request('creator', { circleName: 'Our family' }));
   const [user, circle, secrets] = await Promise.all([
     db.doc('users/creator').get(), db.doc(`circles/${created.id}`).get(),
@@ -34,17 +36,27 @@ test('creation atomically assigns creator membership and keeps invites private',
   ]);
   assert.equal(user.data().role, 'parent');
   assert.equal(user.data().circleId, created.id);
+  assert.equal(user.data().latitude, undefined);
+  assert.equal(user.data().lastSeen, undefined);
+  assert.equal(user.data().lastLocationPointId, undefined);
+  assert.equal((await db.doc('locations/creator').get()).exists, false);
   assert.deepEqual(circle.data().memberIds, ['creator']);
   assert.equal(circle.data().parentInviteCode, undefined);
   assert.equal(secrets.data().parentInviteCode, created.parentInviteCode);
   await assert.rejects(handlers.createCircle.run(request('creator', { circleName: 'Another family' })), { code: 'already-exists' });
 });
 test('valid child invite joins once and cannot promote an existing member', async () => {
+  await db.doc('users/child').update({ latitude: 3, longitude: 4, lastSeen: 'old' });
+  await db.doc('locations/child').set({ latitude: 3, longitude: 4 });
   const joined = await handlers.joinCircle.run(request('child', { inviteCode: created.childInviteCode }));
   assert.equal(joined.role, 'child');
   assert.equal(joined.circleId, created.id);
+  assert.equal((await db.doc('users/child').get()).data().latitude, undefined);
+  assert.equal((await db.doc('locations/child').get()).exists, false);
+  await db.doc('users/child').update({ latitude: 5 });
   await handlers.joinCircle.run(request('child', { inviteCode: created.parentInviteCode }));
   assert.equal((await db.doc('users/child').get()).data().role, 'child');
+  assert.equal((await db.doc('users/child').get()).data().latitude, 5);
   const members = (await db.doc(`circles/${created.id}`).get()).data().memberIds;
   assert.equal(members.filter((uid) => uid === 'child').length, 1);
 });
