@@ -1,0 +1,6 @@
+# Copy to android/key.properties (ignored by Git). Never commit the real file.
+# Paths are relative to android/, or absolute using forward slashes.
+storeFile=../.cache/signing/upload-keystore.jks
+storePassword=REPLACE_LOCALLY
+keyAlias=upload
+keyPassword=REPLACE_LOCALLY

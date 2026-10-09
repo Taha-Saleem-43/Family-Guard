@@ -9,6 +9,46 @@ concurrency:
   group: verify-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  android:
+    runs-on: ubuntu-latest
+    env:
+      GRADLE_USER_HOME: ${{ github.workspace }}/.cache/gradle
+      ANDROID_HOME: ${{ github.workspace }}/.cache/android-sdk
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/.cache/android-sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.7'
+          channel: stable
+          cache: true
+      - name: Install SDK components into the checkout cache
+        run: |
+          set +o pipefail
+          yes | sdkmanager --sdk_root="$ANDROID_HOME" --licenses > /dev/null
+          set -o pipefail
+          sdkmanager --sdk_root="$ANDROID_HOME" "platform-tools" "platforms;android-36" "build-tools;36.1.0" "ndk;28.2.13676358" "cmake;3.22.1"
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter build apk --debug --no-pub --target-platform android-arm64
+      - name: Reject unconfigured production release
+        working-directory: android
+        run: |
+          if ./gradlew :app:validateReleaseConfiguration --no-daemon > release-validation.log 2>&1; then
+            echo "Release configuration unexpectedly accepted the development identity"
+            exit 1
+          fi
+          if ! grep -q "owner-approved FAMILY_GUARD_APPLICATION_ID" release-validation.log; then
+            cat release-validation.log
+            exit 1
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android-debug-apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
   flutter:
     runs-on: ubuntu-latest
     steps:
