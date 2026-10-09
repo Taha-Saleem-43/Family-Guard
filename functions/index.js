@@ -10,6 +10,8 @@ const options = { region: 'us-central1', enforceAppCheck: true, maxInstances: 10
 const sos = require('./features/sos').createSOSHandlers(db);
 exports.triggerSos = onCall(options, sos.trigger);
 exports.resolveSos = onCall(options, sos.resolve);
+const circles = require('./features/circles').createCircleManagementHandlers(db);
+exports.rotateCircleInvites = onCall(options, circles.rotateInvites);
 
 function authenticated(request) {
   if (!request.auth) throw new HttpsError('unauthenticated', 'Please sign in first.');

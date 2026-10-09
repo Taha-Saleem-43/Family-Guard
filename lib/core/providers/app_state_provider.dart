@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -13,6 +14,8 @@ enum AppStage { onboarding, main }
 enum AppTab { map, history, places, alerts, settings }
 
 class AppState {
+  static const _unchanged = Object();
+  final DateTime? inviteExpiresAt;
   final AppStage stage;
   final UserRole role;
   final AppTab activeTab;
@@ -32,6 +35,7 @@ class AppState {
     this.parentInviteCode = '',
     this.userId = '',
     this.circleId = '',
+    this.inviteExpiresAt,
   });
   AppState copyWith({
     AppStage? stage,
@@ -43,6 +47,7 @@ class AppState {
     String? parentInviteCode,
     String? userId,
     String? circleId,
+    Object? inviteExpiresAt = _unchanged,
   }) => AppState(
     stage: stage ?? this.stage,
     role: role ?? this.role,
@@ -53,6 +58,9 @@ class AppState {
     parentInviteCode: parentInviteCode ?? this.parentInviteCode,
     userId: userId ?? this.userId,
     circleId: circleId ?? this.circleId,
+    inviteExpiresAt: identical(inviteExpiresAt, _unchanged)
+        ? this.inviteExpiresAt
+        : inviteExpiresAt as DateTime?,
   );
 }
 
@@ -71,11 +79,11 @@ class AppStateNotifier extends StateNotifier<AppState> {
       super(initial);
 
   void _subscribeToCircle(String circleId) {
+    final generation = ++_sessionGeneration;
     _circleSub?.cancel();
     _inviteSub?.cancel();
     if (circleId.isEmpty || Firebase.apps.isEmpty) return;
     final service = AuthService();
-    final generation = _sessionGeneration;
     _circleSub = service
         .streamCircle(circleId)
         .listen(
@@ -99,16 +107,29 @@ class AppStateNotifier extends StateNotifier<AppState> {
     if (state.role == UserRole.parent) {
       _inviteSub = service.streamInvites(circleId).listen((data) {
         if (!mounted || generation != _sessionGeneration) return;
+        final expiry = data?['expiresAt'];
         state = state.copyWith(
           childInviteCode: data?['childInviteCode'] as String? ?? '',
           parentInviteCode: data?['parentInviteCode'] as String? ?? '',
+          inviteExpiresAt: expiry is Timestamp
+              ? expiry.toDate()
+              : expiry is String
+              ? DateTime.tryParse(expiry)
+              : null,
         );
       }, onError: (Object _) {});
     }
   }
 
   void setRole(UserRole role) {
-    state = state.copyWith(role: role);
+    if (state.role == role) return;
+    state = state.copyWith(
+      role: role,
+      childInviteCode: '',
+      parentInviteCode: '',
+      inviteExpiresAt: null,
+    );
+    _subscribeToCircle(state.circleId);
   }
 
   void setCircleName(String name) {
@@ -120,11 +141,23 @@ class AppStateNotifier extends StateNotifier<AppState> {
   }
 
   void setUserId(String uid) {
-    state = state.copyWith(userId: uid);
+    if (state.userId == uid) return;
+    state = state.copyWith(
+      userId: uid,
+      childInviteCode: '',
+      parentInviteCode: '',
+      inviteExpiresAt: null,
+    );
+    _subscribeToCircle(state.circleId);
   }
 
   void setCircleId(String id) {
-    state = state.copyWith(circleId: id);
+    state = state.copyWith(
+      circleId: id,
+      childInviteCode: '',
+      parentInviteCode: '',
+      inviteExpiresAt: null,
+    );
     _subscribeToCircle(id);
   }
 

@@ -85,3 +85,4 @@ jobs:
       - run: npm run test:rules
       - run: npm run test:membership
       - run: npm run test:sos
+      - run: npm run test:invites

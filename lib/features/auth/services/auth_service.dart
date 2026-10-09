@@ -119,6 +119,15 @@ class AuthService {
     await LocationService.clearDebugLog();
   }
 
+  Future<DateTime> rotateCircleInvites(String circleId) async {
+    if (_auth.currentUser == null) throw Exception('Please sign in.');
+    final result = await _functions.httpsCallable('rotateCircleInvites').call({
+      'circleId': circleId,
+    });
+    final data = Map<String, dynamic>.from(result.data as Map);
+    return DateTime.parse(data['expiresAt'] as String);
+  }
+
   Stream<CircleModel?> streamCircle(String circleId) {
     if (circleId.isEmpty) return Stream.value(null);
     return _firestore.collection('circles').doc(circleId).snapshots().map((

@@ -9,6 +9,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../../map/presentation/widgets/member_detail_sheet.dart';
 import 'permission_status_card.dart';
+import 'invite_rotation_control.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -263,6 +264,10 @@ class SettingsScreen extends ConsumerWidget {
           ],
 
           // Permissions Status Dashboard
+          if (isParent) ...[
+            const InviteRotationControl(),
+            const SizedBox(height: 16),
+          ],
           const Text(
             'Permission Status Dashboard',
             style: TextStyle(
