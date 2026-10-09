@@ -40,6 +40,8 @@ New personal Play accounts currently require at least 12 opted-in testers contin
 
 ## Verification
 
+Profile validation: all 76 Flutter tests pass, analysis reports no issues, and all 11 Firestore rules tests pass. Client updates validate display-name length, battery bounds, charging type, speed, activity and last-seen type. Legacy malformed account fields no longer crash restoration; Firestore and ISO creation timestamps are supported.
+
 Location access hardening: Flutter analysis is clean, all 74 Flutter tests pass, and all 10 Firestore rules emulator tests pass, including child access denial for parent/sibling profiles and parent roster query access.
 
 Circle management: 74 Flutter tests passed; invite rotation passed 4 backend emulator tests. Final Flutter analysis reported no issues. Android branch CI built and archived the ARM64 debug APK, rejected an unconfigured release and passed Flutter/Firebase checks. This is a development artifact, not a signed production release.

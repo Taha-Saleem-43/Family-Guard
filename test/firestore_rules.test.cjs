@@ -73,3 +73,16 @@ test('children can read themselves but cannot query other location profiles', as
   await assertFails(getDoc(doc(dbFor('childA'), 'users/siblingA')));
   await assertFails(getDocs(query(collection(dbFor('childA'), 'users'), where('circleId', '==', 'a'))));
 });
+
+test('profile updates reject malformed display and tracking fields', async () => {
+  const profile = doc(dbFor('childA'), 'users/childA');
+  for (const fields of [
+    { displayName: 42 }, { displayName: '' }, { displayName: 'x'.repeat(81) },
+    { batteryLevel: -1 }, { batteryLevel: 101 }, { batteryLevel: 50.5 },
+    { isCharging: 'yes' }, { speedMph: -1 }, { speedMph: 'fast' },
+    { movementActivity: 'flying' }, { lastSeen: 123 },
+  ]) await assertFails(updateDoc(profile, fields));
+  await assertSucceeds(updateDoc(profile, { displayName: 'Child', batteryLevel: 80,
+    isCharging: false, speedMph: 0, movementActivity: 'stationary', lastSeen: new Date().toISOString() }));
+  await assertSucceeds(updateDoc(profile, { latitude: 1, longitude: 2 }));
+});

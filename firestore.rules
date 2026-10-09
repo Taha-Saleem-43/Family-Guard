@@ -15,6 +15,19 @@ service cloud.firestore {
       return data.latitude is number && data.latitude >= -90 && data.latitude <= 90
         && data.longitude is number && data.longitude >= -180 && data.longitude <= 180;
     }
+    function validProfileUpdate() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      let data = request.resource.data;
+      return (!changed.hasAny(['displayName']) || (data.displayName is string
+          && data.displayName.size() > 0 && data.displayName.size() <= 80))
+        && (!changed.hasAny(['batteryLevel']) || (data.batteryLevel is int
+          && data.batteryLevel >= 0 && data.batteryLevel <= 100))
+        && (!changed.hasAny(['isCharging']) || data.isCharging is bool)
+        && (!changed.hasAny(['speedMph']) || (data.speedMph is number
+          && data.speedMph >= 0 && data.speedMph <= 1000))
+        && (!changed.hasAny(['movementActivity']) || data.movementActivity in ['stationary', 'walking', 'driving'])
+        && (!changed.hasAny(['lastSeen']) || (data.lastSeen is string && data.lastSeen.size() <= 40));
+    }
     match /users/{uid} {
       allow read: if owner(uid) || parent(resource.data.circleId);
       allow create: if owner(uid)
@@ -23,6 +36,7 @@ service cloud.firestore {
         && request.resource.data.circleId == null && request.resource.data.displayName is string
         && request.resource.data.displayName.size() > 0 && request.resource.data.displayName.size() <= 80;
       allow update: if owner(uid)
+        && validProfileUpdate()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'displayName', 'latitude', 'longitude', 'speedMph', 'movementActivity',
           'batteryLevel', 'isCharging', 'lastSeen'

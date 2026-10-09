@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/models/member.dart';
 
 class UserAccountModel extends Equatable {
@@ -30,15 +31,22 @@ class UserAccountModel extends Equatable {
   }
 
   factory UserAccountModel.fromMap(Map<String, dynamic> map, String id) {
+    final rawCreatedAt = map['createdAt'];
+    final createdAt = rawCreatedAt is Timestamp
+        ? rawCreatedAt.toDate()
+        : rawCreatedAt is String
+        ? DateTime.tryParse(rawCreatedAt)
+        : null;
     return UserAccountModel(
       uid: id,
-      email: map['email'] as String? ?? '',
-      displayName: map['displayName'] as String? ?? '',
+      email: map['email'] is String ? map['email'] as String : '',
+      displayName: map['displayName'] is String
+          ? map['displayName'] as String
+          : '',
       role: map['role'] == 'parent' ? UserRole.parent : UserRole.child,
-      circleId: map['circleId'] as String?,
-      createdAt: map['createdAt'] != null
-          ? DateTime.parse(map['createdAt'] as String)
-          : DateTime.now(),
+      circleId: map['circleId'] is String ? map['circleId'] as String : null,
+      createdAt:
+          createdAt ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
     );
   }
 
