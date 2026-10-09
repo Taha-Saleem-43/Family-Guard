@@ -20,26 +20,45 @@ class MainShellScreen extends ConsumerStatefulWidget {
   ConsumerState<MainShellScreen> createState() => _MainShellScreenState();
 }
 
-class _MainShellScreenState extends ConsumerState<MainShellScreen> {
+class _MainShellScreenState extends ConsumerState<MainShellScreen>
+    with WidgetsBindingObserver {
+  bool _checkingTracking = false;
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // Defer until after the first frame so the widget tree is fully built
     // and ref is valid before we touch state.
     WidgetsBinding.instance.addPostFrameCallback((_) => _initTracking());
   }
 
   Future<void> _initTracking() async {
+    if (_checkingTracking || !mounted) return;
     final initial = ref.read(appStateProvider);
     final role = initial.role;
 
     // Only child devices broadcast location.
     // Parents read from Firestore (Step 7) — they don't run the tracker.
-    if (role != UserRole.child) return;
+    if (role != UserRole.child ||
+        initial.userId.isEmpty ||
+        initial.circleId.isEmpty) {
+      return;
+    }
+    _checkingTracking = true;
 
     try {
       final permissions = await PermissionService().getPermissionSummary();
-      if (!mounted || !permissions.canOperate) return;
+      if (!mounted) return;
+      final checked = ref.read(appStateProvider);
+      if (checked.userId != initial.userId ||
+          checked.circleId != initial.circleId ||
+          checked.role != UserRole.child) {
+        return;
+      }
+      if (!permissions.canOperate) {
+        await LocationService.instance.stop();
+        return;
+      }
       await LocationService.instance.init();
       if (!mounted) return;
       final current = ref.read(appStateProvider);
@@ -56,11 +75,19 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       // Non-fatal in Step 6 — failure is visible in the debug log.
       // Step 11 adds the full error-handling pass with banners and Crashlytics.
       debugPrint('[LocationService] init/start error: $e');
+    } finally {
+      _checkingTracking = false;
     }
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _initTracking();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     // Do NOT stop tracking on dispose — the foreground service must persist
     // after the widget is unmounted (e.g. screen rotation, navigation).
     // Tracking is stopped only on explicit sign-out (Step 13).

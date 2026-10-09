@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/providers/app_state_provider.dart';
 import '../../../core/models/permission_summary.dart';
 import '../../../core/services/permission_service.dart';
 
-class PermissionStatusCard extends StatefulWidget {
+class PermissionStatusCard extends ConsumerStatefulWidget {
   const PermissionStatusCard({super.key});
   @override
-  State<PermissionStatusCard> createState() => _PermissionStatusCardState();
+  ConsumerState<PermissionStatusCard> createState() =>
+      _PermissionStatusCardState();
 }
 
-class _PermissionStatusCardState extends State<PermissionStatusCard>
+class _PermissionStatusCardState extends ConsumerState<PermissionStatusCard>
     with WidgetsBindingObserver {
   final _service = PermissionService();
   late Future<PermissionSummary> _status;
@@ -65,9 +68,15 @@ class _PermissionStatusCardState extends State<PermissionStatusCard>
         final status = snapshot.data!;
         return Column(
           children: [
-            _row('Location permission', status.foregroundLocation),
-            _row('Background location permission', status.backgroundLocation),
-            _row('Battery optimization exemption', status.batteryOptimization),
+            if (ref.watch(appStateProvider.select((state) => state.role)) ==
+                UserRole.child) ...[
+              _row('Location permission', status.foregroundLocation),
+              _row('Background location permission', status.backgroundLocation),
+              _row(
+                'Battery optimization exemption',
+                status.batteryOptimization,
+              ),
+            ],
             _row('Notifications', status.notifications),
             TextButton(
               onPressed: _service.openSystemAppSettings,
