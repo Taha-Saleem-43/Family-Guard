@@ -1,6 +1,6 @@
 # Release status
 
-## Current branch: codex/release-foundations
+## Foundations and SOS state correction
 
 Implemented foundations:
 
@@ -10,6 +10,7 @@ Implemented foundations:
 - Shared foreground/headless upload entry point, fix validation, serialized atomic live/history writes and removal of upload-time client cleanup.
 - Timestamp history expiry fields and TTL configuration; honest empty history and real permission queries.
 - Regression tests and GitHub Actions for app, backend and rules verification.
+- SOS alert/profile changes use atomic batches. The sender becomes active only after a successful commit, failed resolution preserves the active alert, and failures offer retry feedback. Nullable SOS identifiers clear correctly. This does not implement push delivery, acknowledgement or durable retry after an ambiguous timeout.
 
 ## Deployment dependencies — do not deploy independently
 
@@ -37,3 +38,5 @@ New personal Play accounts currently require at least 12 opted-in testers contin
 Local Flutter suite: 55 tests passed. Dart analysis: no issues. Firestore security emulator: 9 tests passed. Backend domain tests: 3 passed. Membership transaction emulator integration: 6 passed, including concurrent creation, invite expiry, idempotent joining and rate limiting.
 
 These checks do not establish physical-device behavior, Play approval, deployed backend compatibility, or measured battery savings. GitHub Actions only runs remotely after the branch is pushed.
+
+The SOS state correction additionally passed the full 56-test Flutter suite before its failure-path regression was added; all 10 SOS tests then passed, including the added failure-path test. Flutter analysis reported no issues. The initial remote foundation Flutter job passed; its backend job exposed a Node 22 isolation-flag incompatibility, now corrected by a portable launcher and awaiting remote revalidation.
