@@ -184,6 +184,7 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
   void _listenToLocationUpdates() {
     _locationSub = LocationService.instance.onLocation((tl.Location location) {
       if (!mounted ||
+          !_ownsDeviceFix(location) ||
           !LocationFixPolicy.accepts(
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
@@ -203,6 +204,7 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
       );
 
       _updateSelfLocation(
+        capturedAt: DateTime.parse(location.timestamp),
         lat: location.coords.latitude,
         lng: location.coords.longitude,
         speedMph: speedMph,
@@ -214,6 +216,7 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
       tl.Location location,
     ) {
       if (!mounted ||
+          !_ownsDeviceFix(location) ||
           !LocationFixPolicy.accepts(
             latitude: location.coords.latitude,
             longitude: location.coords.longitude,
@@ -234,6 +237,7 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
           : MovementActivity.stationary;
 
       _updateSelfLocation(
+        capturedAt: DateTime.parse(location.timestamp),
         lat: location.coords.latitude,
         lng: location.coords.longitude,
         speedMph: speedMph,
@@ -242,7 +246,19 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
     });
   }
 
+  bool _ownsDeviceFix(tl.Location location) {
+    final account = _ref.read(appStateProvider);
+    return account.stage == AppStage.main &&
+        account.role == UserRole.child &&
+        LocationService.instance.ownsDisplayFix(
+          account.userId,
+          account.circleId,
+          DateTime.tryParse(location.timestamp),
+        );
+  }
+
   void _updateSelfLocation({
+    required DateTime capturedAt,
     required double lat,
     required double lng,
     required double speedMph,
@@ -261,7 +277,7 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
           longitude: lng,
           speedMph: speedMph,
           movementActivity: activity,
-          lastSeen: DateTime.now(),
+          lastSeen: capturedAt,
           isStale: false,
         );
         return selfMember!;
@@ -286,38 +302,6 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
         return selfMember!;
       }
       return member;
-    }).toList();
-  }
-
-  /// Manually cycle member activity state for testing/interactive inspection
-  void cycleMemberActivity(String memberId) {
-    state = state.map((m) {
-      if (m.id == memberId) {
-        MovementActivity nextActivity;
-        double nextSpeed;
-
-        switch (m.movementActivity) {
-          case MovementActivity.stationary:
-            nextActivity = MovementActivity.walking;
-            nextSpeed = 3.5;
-            break;
-          case MovementActivity.walking:
-            nextActivity = MovementActivity.driving;
-            nextSpeed = 34.0;
-            break;
-          case MovementActivity.driving:
-            nextActivity = MovementActivity.stationary;
-            nextSpeed = 0.0;
-            break;
-        }
-
-        return m.copyWith(
-          movementActivity: nextActivity,
-          speedMph: nextSpeed,
-          lastSeen: DateTime.now(),
-        );
-      }
-      return m;
     }).toList();
   }
 

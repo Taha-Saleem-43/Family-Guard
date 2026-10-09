@@ -282,7 +282,12 @@ class SettingsScreen extends ConsumerWidget {
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(children: [const PermissionStatusCard(), const PushStatusCard()]),
+              child: Column(
+                children: [
+                  const PermissionStatusCard(),
+                  const PushStatusCard(),
+                ],
+              ),
             ),
           ),
           const SizedBox(height: 24),
@@ -392,42 +397,35 @@ class SettingsScreen extends ConsumerWidget {
                   Row(
                     children: [
                       // Movement Badge
-                      GestureDetector(
-                        onTap: () {
-                          ref
-                              .read(memberStateProvider.notifier)
-                              .cycleMemberActivity(member.id);
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: activity.bgColor,
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: activity.color.withValues(alpha: 0.3),
                           ),
-                          decoration: BoxDecoration(
-                            color: activity.bgColor,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                              color: activity.color.withValues(alpha: 0.3),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              activity.emoji,
+                              style: const TextStyle(fontSize: 11),
                             ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                activity.emoji,
-                                style: const TextStyle(fontSize: 11),
+                            const SizedBox(width: 3),
+                            Text(
+                              activity.label,
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: activity.color,
                               ),
-                              const SizedBox(width: 3),
-                              Text(
-                                activity.label,
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w800,
-                                  color: activity.color,
-                                ),
-                              ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
 
@@ -469,5 +467,4 @@ class SettingsScreen extends ConsumerWidget {
       ),
     );
   }
-
 }

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/foundation.dart';
@@ -23,6 +24,7 @@ class LocationService {
   Timer? _retryTimer;
   String? _retryTimerUid;
   int? _verifiedAuthTime;
+  int? _sharingStartedAt;
   late final _lifecycle = TrackingLifecycle(
     currentUid: () => FirebaseAuth.instance.currentUser?.uid,
     verifyScope: (uid, circleId) async {
@@ -65,7 +67,7 @@ class LocationService {
           (circle.data()!['memberIds'] as List).contains(uid);
     },
     activate: (uid, circle) async {
-      await LocationSyncService.outbox.activate(
+      _sharingStartedAt = await LocationSyncService.outbox.activate(
         uid,
         circle,
         DateTime.now().millisecondsSinceEpoch,
@@ -83,6 +85,27 @@ class LocationService {
 
   bool get isReady => _isReady;
   bool get isTracking => _lifecycle.activeScope != null;
+
+  bool ownsDisplayFix(String uid, String circleId, DateTime? capturedAt) {
+    final signedInAt = Firebase.apps.isEmpty
+        ? null
+        : FirebaseAuth
+              .instance
+              .currentUser
+              ?.metadata
+              .lastSignInTime
+              ?.millisecondsSinceEpoch;
+    if (Firebase.apps.isEmpty ||
+        FirebaseAuth.instance.currentUser?.uid != uid ||
+        capturedAt == null ||
+        _sharingStartedAt == null ||
+        signedInAt == null ||
+        _sharingStartedAt! < signedInAt) {
+      return false;
+    }
+    return _lifecycle.activeScope == (uid: uid, circleId: circleId) &&
+        capturedAt.millisecondsSinceEpoch >= _sharingStartedAt!;
+  }
 
   // ── SharedPreferences key ──────────────────────────────────────────────────
   static const _logKey = 'fg_location_log';
