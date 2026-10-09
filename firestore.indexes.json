@@ -29,5 +29,8 @@
       ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    { "collectionGroup": "points", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "inviteAttempts", "fieldPath": "expireAt", "ttl": true, "indexes": [] }
+  ]
 }

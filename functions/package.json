@@ -1,0 +1,8 @@
+{
+  "name": "family-guard-functions",
+  "private": true,
+  "main": "index.js",
+  "engines": { "node": "22" },
+  "scripts": { "test": "node --test --test-isolation=none test/*.test.js", "check": "node --check index.js" },
+  "dependencies": { "firebase-admin": "^13.0.0", "firebase-functions": "^6.0.0" }
+}

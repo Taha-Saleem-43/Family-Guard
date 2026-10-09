@@ -1,80 +1,68 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    // Helper functions
-    function isAuthenticated() {
-      return request.auth != null;
+    function signedIn() { return request.auth != null; }
+    function owner(uid) { return signedIn() && request.auth.uid == uid; }
+    function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function member(circleId) {
+      return signedIn() && circleId is string && circleId.size() > 0 && me().circleId == circleId;
     }
-
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    function parent(circleId) { return member(circleId) && me().role == 'parent'; }
+    function sameCircleUser(uid) {
+      return member(get(/databases/$(database)/documents/users/$(uid)).data.circleId);
     }
-
-    function getUserData() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    function validLocation(data) {
+      return data.latitude is number && data.latitude >= -90 && data.latitude <= 90
+        && data.longitude is number && data.longitude >= -180 && data.longitude <= 180;
     }
-
-    function isParentInCircle(circleId) {
-      return isAuthenticated() && 
-        getUserData().circleId == circleId && 
-        getUserData().role == 'parent';
+    match /users/{uid} {
+      allow read: if owner(uid) || member(resource.data.circleId);
+      allow create: if owner(uid)
+        && request.resource.data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'circleId', 'createdAt'])
+        && request.resource.data.uid == uid && request.resource.data.role == 'child'
+        && request.resource.data.circleId == null && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0 && request.resource.data.displayName.size() <= 80;
+      allow update: if owner(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName', 'latitude', 'longitude', 'speedMph', 'movementActivity',
+          'batteryLevel', 'isCharging', 'lastSeen', 'isSosActive', 'activeSosId', 'lastSosAt'
+        ])
+        && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['latitude', 'longitude'])
+          || (member(resource.data.circleId) && validLocation(request.resource.data)));
     }
-
-    function isMemberOfCircle(circleId) {
-      return isAuthenticated() && getUserData().circleId == circleId;
-    }
-
-    // Users Collection
-    match /users/{userId} {
-      allow read: if isAuthenticated();
-      allow create, update, delete: if isAuthenticated() && isOwner(userId);
-    }
-
-    // Circles Collection
     match /circles/{circleId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated();
-      allow update: if isAuthenticated() && (
-        isMemberOfCircle(circleId) || 
-        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['memberIds'])
-      );
+      allow read: if member(circleId);
+      match /private/{document} { allow read: if parent(circleId); }
     }
-
-    // Locations & Location History
-    match /locations/{userId} {
-      allow write: if isOwner(userId);
-      allow read: if isAuthenticated() && (
-        isOwner(userId) || 
-        getUserData().role == 'parent'
-      );
+    match /locations/{uid} {
+      allow read: if owner(uid) || (sameCircleUser(uid) && me().role == 'parent');
+      allow create, update: if owner(uid) && member(me().circleId) && validLocation(request.resource.data);
     }
-
-    match /locationHistory/{userId}/points/{pointId} {
-      allow write: if isOwner(userId);
-      allow read: if isAuthenticated() && (
-        isOwner(userId) || 
-        getUserData().role == 'parent'
-      );
+    match /locationHistory/{uid}/points/{pointId} {
+      allow read: if owner(uid) || (sameCircleUser(uid) && me().role == 'parent');
+      allow create: if owner(uid) && member(me().circleId) && validLocation(request.resource.data)
+        && request.resource.data.timestamp is timestamp && request.resource.data.expireAt is timestamp;
     }
-
-    // Places & Place Events
     match /places/{placeId} {
-      allow read, write: if isAuthenticated() && isMemberOfCircle(resource.data.circleId);
-      allow create: if isAuthenticated();
+      allow read: if member(resource.data.circleId);
+      allow create: if parent(request.resource.data.circleId) && request.resource.data.createdBy == request.auth.uid
+        && validLocation(request.resource.data) && request.resource.data.radius >= 100 && request.resource.data.radius <= 1000;
+      allow update: if parent(resource.data.circleId) && request.resource.data.circleId == resource.data.circleId
+        && request.resource.data.createdBy == resource.data.createdBy && validLocation(request.resource.data)
+        && request.resource.data.radius >= 100 && request.resource.data.radius <= 1000;
+      allow delete: if parent(resource.data.circleId);
     }
-
-    match /placeEvents/{eventId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // SOS Emergency Events & Alerts
     match /sos_alerts/{alertId} {
-      allow read, write: if isAuthenticated();
+      allow read: if member(resource.data.circleId);
+      allow create: if member(request.resource.data.circleId) && request.resource.data.senderId == request.auth.uid
+        && request.resource.data.status == 'active';
+      allow update: if member(resource.data.circleId) && resource.data.senderId == request.auth.uid
+        && resource.data.status == 'active' && request.resource.data.status == 'resolved'
+        && request.resource.data.resolvedBy == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'resolvedAt', 'resolvedBy', 'durationSeconds']);
     }
-
-    match /sosEvents/{eventId} {
-      allow read, write: if isAuthenticated();
-    }
+    match /placeEvents/{eventId} { allow read: if member(resource.data.circleId); }
+    match /sosEvents/{eventId} { allow read: if member(resource.data.circleId); }
+    // All membership mutations, invite secrets, rate limits and unspecified paths are backend-only.
   }
 }
