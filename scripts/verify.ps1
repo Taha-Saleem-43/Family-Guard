@@ -31,6 +31,15 @@ try {
   if ($LASTEXITCODE -ne 0) { throw 'Account deletion integration tests failed' }
   npm.cmd run test:push
   if ($LASTEXITCODE -ne 0) { throw 'Push delivery integration tests failed' }
+  npm.cmd run test:locations
+  if ($LASTEXITCODE -ne 0) { throw 'Location ingestion integration tests failed' }
+  Push-Location tool/sqlite_tests
+  try {
+    flutter pub get --enforce-lockfile
+    if ($LASTEXITCODE -ne 0) { throw 'Storage test dependency resolution failed' }
+    flutter test
+    if ($LASTEXITCODE -ne 0) { throw 'Durable storage tests failed' }
+  } finally { Pop-Location }
 } finally {
   Pop-Location
 }

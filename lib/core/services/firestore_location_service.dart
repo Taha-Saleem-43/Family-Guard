@@ -1,6 +1,9 @@
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:crypto/crypto.dart';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../models/location_history_point.dart';
 import '../models/location_history_page.dart';
@@ -187,40 +190,25 @@ class FirestoreLocationService {
           _circleLookupUid = uid;
           _uploadCircleId = circle;
         }
-        final expireAt = capturedAt.add(const Duration(days: 30));
-
-        final batch = _firestore.batch();
-        batch.set(_firestore.collection('users').doc(uid), {
+        final fields = <String, Object>{
+          'capturedAt': capturedAt.millisecondsSinceEpoch,
           'latitude': latitude,
           'longitude': longitude,
           'speedMph': speedMph,
           'movementActivity': activity.name,
           'batteryLevel': batteryLevel,
           'isCharging': isCharging,
-          'lastSeen': capturedAt.toIso8601String(),
-        }, SetOptions(merge: true));
-
-        // Record history point in locationHistory/{uid}/points
-        final historyRef = _firestore
-            .collection('locationHistory')
-            .doc(uid)
-            .collection('points')
-            .doc();
-        final historyPoint = LocationHistoryPoint(
-          id: historyRef.id,
-          latitude: latitude,
-          longitude: longitude,
-          speedMph: speedMph,
-          movementActivity: activity,
-          timestamp: capturedAt,
-          expireAt: expireAt,
-        );
-
-        batch.set(historyRef, {
-          ...historyPoint.toMap(),
+        };
+        final id = sha256
+            .convert(utf8.encode(jsonEncode([uid, _uploadCircleId, fields])))
+            .toString();
+        await FirebaseFunctions.instance.httpsCallable('ingestLocations').call({
+          'expectedUid': uid,
           'circleId': _uploadCircleId,
+          'fixes': [
+            {'id': id, ...fields},
+          ],
         });
-        await batch.commit();
       }
 
       _lastUploadTime = now;
@@ -232,7 +220,8 @@ class FirestoreLocationService {
       _lastUploadedBattery = batteryLevel;
       _lastUploadedCharging = isCharging;
     } catch (e) {
-      if (e is FirebaseException && e.code == 'permission-denied') {
+      if (e is FirebaseException &&
+          ['permission-denied', 'failed-precondition'].contains(e.code)) {
         _circleLookupUid = null;
         _uploadCircleId = null;
       }

@@ -30,7 +30,8 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
   }
 
   Future<void> _initTracking() async {
-    final role = ref.read(appStateProvider).role;
+    final initial = ref.read(appStateProvider);
+    final role = initial.role;
 
     // Only child devices broadcast location.
     // Parents read from Firestore (Step 7) — they don't run the tracker.
@@ -40,8 +41,17 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen> {
       final permissions = await PermissionService().getPermissionSummary();
       if (!mounted || !permissions.canOperate) return;
       await LocationService.instance.init();
-      if (!mounted || ref.read(appStateProvider).role != UserRole.child) return;
-      await LocationService.instance.start();
+      if (!mounted) return;
+      final current = ref.read(appStateProvider);
+      if (current.role != UserRole.child ||
+          current.userId != initial.userId ||
+          current.circleId != initial.circleId) {
+        return;
+      }
+      await LocationService.instance.start(
+        uid: current.userId,
+        circleId: current.circleId,
+      );
     } catch (e) {
       // Non-fatal in Step 6 — failure is visible in the debug log.
       // Step 11 adds the full error-handling pass with banners and Crashlytics.

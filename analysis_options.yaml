@@ -12,6 +12,9 @@ analyzer:
   exclude:
     - '**/node_modules/**'
     - 'Figma Designs/**'
+    - '.pub-cache/**'
+    - '.cache/**'
+    - 'tool/sqlite_tests/**'
 
 linter:
   # The lint rules applied to this project can be customized in the

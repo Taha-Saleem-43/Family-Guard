@@ -50,6 +50,7 @@ void backgroundLocationHandler(tl.HeadlessEvent event) async {
         ? tl.HeartbeatEvent.fromMap(event.event).location
         : tl.Location.fromMap(event.event);
     await LocationSyncService.ingest(location);
+    if (event.name == 'heartbeat') await LocationSyncService.recover();
     await LocationService.appendDebugLog(
       location,
       source: 'HEADLESS:${event.name.toUpperCase()}',

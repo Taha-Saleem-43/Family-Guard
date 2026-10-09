@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -15,6 +16,7 @@ class LocationService {
   // ── Internal state ─────────────────────────────────────────────────────────
   bool _isReady = false;
   bool _isTracking = false;
+  Timer? _retryTimer;
 
   bool get isReady => _isReady;
   bool get isTracking => _isTracking;
@@ -40,6 +42,9 @@ class LocationService {
     tl.Tracelet.onMotionChange((tl.Location loc) {
       unawaited(LocationSyncService.ingest(loc));
     });
+    tl.Tracelet.onConnectivityChange((event) {
+      unawaited(LocationSyncService.flush());
+    });
 
     await tl.Tracelet.ready(
       tl.Config.balanced().copyWith(
@@ -56,6 +61,10 @@ class LocationService {
         motion: const tl.MotionConfig(
           // 0 = no stationary timeout — Tracelet decides when to stop.
           stopTimeout: 0,
+        ),
+        persistence: const tl.PersistenceConfig(
+          maxDaysToPersist: 7,
+          maxRecordsToPersist: 5000,
         ),
         android: const tl.AndroidConfig(
           foregroundService: tl.ForegroundServiceConfig(
@@ -76,13 +85,30 @@ class LocationService {
 
   // ── Start / Stop ──────────────────────────────────────────────────────────
 
-  Future<void> start() async {
-    if (!_isReady || _isTracking) return;
+  Future<void> start({required String uid, required String circleId}) async {
+    if (!_isReady || FirebaseAuth.instance.currentUser?.uid != uid) return;
+    await LocationSyncService.outbox.activate(
+      uid,
+      circleId,
+      DateTime.now().millisecondsSinceEpoch,
+    );
+    if (FirebaseAuth.instance.currentUser?.uid != uid) {
+      await LocationSyncService.outbox.deactivate(uid);
+      return;
+    }
     await tl.Tracelet.start();
     _isTracking = true;
+    _retryTimer?.cancel();
+    _retryTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      unawaited(LocationSyncService.recover().catchError((Object _) {}));
+    });
+    unawaited(LocationSyncService.recover().catchError((Object _) {}));
   }
 
   Future<void> stop() async {
+    _retryTimer?.cancel();
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid != null) await LocationSyncService.outbox.deactivate(uid);
     // Native tracking may already be running after a process restart.
     await tl.Tracelet.stop();
     _isTracking = false;

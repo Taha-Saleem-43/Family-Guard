@@ -45,8 +45,7 @@ service cloud.firestore {
         && !resource.data.get('deletionRequested', false)
         && validProfileUpdate()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-          'displayName', 'latitude', 'longitude', 'speedMph', 'movementActivity',
-          'batteryLevel', 'isCharging', 'lastSeen'
+          'displayName', 'batteryLevel', 'isCharging'
         ])
         && (!request.resource.data.diff(resource.data).affectedKeys().hasAny(['latitude', 'longitude'])
           || (member(resource.data.circleId) && validLocation(request.resource.data)));
@@ -57,13 +56,11 @@ service cloud.firestore {
     }
     match /locations/{uid} {
       allow read: if owner(uid) || (sameCircleUser(uid) && me().role == 'parent');
-      allow create, update: if owner(uid) && member(me().circleId) && validLocation(request.resource.data);
+      // Location writes are owned by the ordered ingestion callable.
     }
     match /locationHistory/{uid}/points/{pointId} {
       allow read: if owner(uid) || (sameCircleUser(uid) && parent(resource.data.circleId));
-      allow create: if owner(uid) && member(me().circleId) && validLocation(request.resource.data)
-        && request.resource.data.circleId == me().circleId
-        && request.resource.data.timestamp is timestamp && request.resource.data.expireAt is timestamp;
+      // Deterministic history IDs and live watermarks are server-owned.
     }
     match /places/{placeId} {
       allow read: if member(resource.data.circleId);

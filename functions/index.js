@@ -13,6 +13,8 @@ const db = getFirestore();
 // Clients must register App Check before release; emulator uses debug tokens.
 const options = { region: 'us-central1', enforceAppCheck: true, maxInstances: 10 };
 const sos = require('./features/sos').createSOSHandlers(db);
+const locations = require('./features/locations').createLocationHandlers(db);
+exports.ingestLocations = onCall(options, locations.ingest);
 exports.triggerSos = onCall(options, sos.trigger);
 exports.resolveSos = onCall(options, sos.resolve);
 const circles = require('./features/circles').createCircleManagementHandlers(db);

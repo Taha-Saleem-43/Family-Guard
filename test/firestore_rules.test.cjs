@@ -86,7 +86,7 @@ test('SOS cannot be spoofed or resolved by another member', async () => {
 });
 test('history requires timestamp TTL and valid coordinates', async () => {
   const point = { circleId: 'a', latitude: 1, longitude: 2, timestamp: Timestamp.now(), expireAt: Timestamp.now() };
-  await assertSucceeds(setDoc(doc(dbFor('childA'), 'locationHistory/childA/points/valid'), point));
+  await assertFails(setDoc(doc(dbFor('childA'), 'locationHistory/childA/points/valid'), point));
   await assertFails(setDoc(doc(dbFor('childA'), 'locationHistory/childA/points/invalid'), { ...point, latitude: 91 }));
   await assertFails(setDoc(doc(dbFor('childA'), 'locationHistory/childA/points/string'), { ...point, expireAt: 'tomorrow' }));
 });
@@ -113,10 +113,11 @@ test('profile updates reject malformed display and tracking fields', async () =>
     { movementActivity: 'flying' }, { lastSeen: 123 },
   ]) await assertFails(updateDoc(profile, fields));
   await assertSucceeds(updateDoc(profile, { displayName: 'Child', batteryLevel: 80,
-    isCharging: false, speedMph: 0, movementActivity: 'stationary', lastSeen: new Date().toISOString() }));
-  await assertSucceeds(updateDoc(profile, { latitude: 1, longitude: 2 }));
-  // Native battery APIs use -1 when the reading is unavailable. Do not reject the location batch.
-  await assertSucceeds(updateDoc(profile, { batteryLevel: -1, latitude: 2, longitude: 3 }));
+    isCharging: false }));
+  await assertFails(updateDoc(profile, { latitude: 1, longitude: 2 }));
+  await assertFails(updateDoc(profile, { lastSeen: new Date().toISOString() }));
+  await assertFails(updateDoc(profile, { lastLocationCapturedAt: Timestamp.now() }));
+  await assertSucceeds(updateDoc(profile, { batteryLevel: -1 }));
 });
 
 test('parents cannot read a member history recorded in another circle or without provenance', async () => {
