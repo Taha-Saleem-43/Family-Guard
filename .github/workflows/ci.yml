@@ -40,6 +40,14 @@ jobs:
             build/app/outputs/flutter-apk/app-debug.apk \
             "$ANDROID_SDK_ROOT/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-objdump" \
             "$ANDROID_SDK_ROOT/build-tools/36.1.0/zipalign"
+      - name: Reject unused exact-alarm permissions in the merged APK
+        run: |
+          "$ANDROID_SDK_ROOT/build-tools/36.1.0/aapt2" dump permissions \
+            build/app/outputs/flutter-apk/app-debug.apk > manifest-permissions.txt
+          if grep -Eq 'android[.]permission[.](SCHEDULE_EXACT_ALARM|USE_EXACT_ALARM)' manifest-permissions.txt; then
+            echo "Unexpected exact-alarm permission in the merged APK"
+            exit 1
+          fi
       - name: Reject unconfigured production release
         working-directory: android
         run: |

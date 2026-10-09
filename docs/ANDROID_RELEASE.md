@@ -1,5 +1,7 @@
 # Android release configuration
 
+The app renders maps with FlutterMap; the unused Google Maps native plugin has been removed. Exact-alarm declarations are removed from the merged manifest because this app does not schedule exact notifications or enable Tracelet's exact-alarm modes. Periodic tracking uses the foreground service and heartbeat fallback. Native timing still requires device verification.
+
 Feature branch: `taha/android-release`. Debug builds keep the development ID until an owner-approved permanent ID is configured. Production release builds require that ID and a real upload keystore; they cannot fall back to debug signing.
 
 ## Local setup

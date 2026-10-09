@@ -13,8 +13,9 @@
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <!-- ACTIVITY_RECOGNITION: feeds Tracelet motion-gate (avoids polling GPS while stationary) -->
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
-    <!-- SCHEDULE_EXACT_ALARM: enables precise heartbeat alarms for periodic mode (Android 12+) -->
-    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <!-- Tracking uses foreground-service timers and inexact heartbeat fallback. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" tools:node="remove"/>
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" tools:node="remove"/>
     <!-- VIBRATE: required for emergency alarm vibration -->
     <uses-permission android:name="android.permission.VIBRATE"/>
 
