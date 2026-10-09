@@ -88,7 +88,10 @@ test('anonymous and other circles cannot read location-bearing profiles', async 
   await assertSucceeds(getDoc(doc(dbFor('parentA'), 'users/childA')));
 });
 test('roster queries must constrain circle membership', async () => {
-  await assertSucceeds(getDocs(query(collection(dbFor('parentA'), 'users'), where('circleId', '==', 'a'))));
+  const roster = await assertSucceeds(getDocs(query(collection(dbFor('parentA'), 'users'),
+    where('circleId', '==', 'a'), where(documentId(), 'in', ['parentA', 'childA', 'siblingA']))));
+  assert.equal(roster.size, 3);
+  await assertFails(getDocs(query(collection(dbFor('parentA'), 'users'), where('circleId', '==', 'a'))));
   await assertFails(getDocs(collection(dbFor('parentA'), 'users')));
 });
 test('clients cannot promote themselves or forge membership', async () => {
