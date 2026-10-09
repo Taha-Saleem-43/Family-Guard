@@ -11,6 +11,8 @@ Feature branch: `taha/android-release`. Debug builds keep the development ID unt
 
 The configuration pins build tools 36.1.0 and disables automatic SDK installation during builds. Install required SDK/NDK components explicitly in an approved local SDK before building. GitHub's Android job provisions its SDK components inside the checkout cache, compiles an ARM64 debug APK and checks that a development identity is rejected for release. This job does not create a production keystore or a signed release bundle.
 
+Plugins also compile against APIs 34 and 35 and AGP's default build tools 35.0.0; CI provisions these explicitly alongside the app's API 36/build tools 36.1.0. They are build dependencies and do not lower the app's target API.
+
 ## Required release verification
 
 The app targets Android 16/API 36. [Google's current target API requirement](https://developer.android.com/google/play/requirements/target-sdk) applies to new app submissions from August 31, 2026. Raising the target changes Android behavior and requires real-device verification, particularly permissions, edge-to-edge layout, foreground tracking and boot handling.

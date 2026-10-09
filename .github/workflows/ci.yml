@@ -30,7 +30,7 @@ jobs:
       - name: Install SDK components into the checkout cache
         uses: android-actions/setup-android@v4
         with:
-          packages: 'platform-tools platforms;android-36 build-tools;36.1.0 ndk;28.2.13676358 cmake;3.22.1'
+          packages: 'platform-tools platforms;android-34 platforms;android-35 platforms;android-36 build-tools;35.0.0 build-tools;36.1.0 ndk;28.2.13676358 cmake;3.22.1'
           log-accepted-android-sdk-licenses: 'false'
       - run: flutter pub get --enforce-lockfile
       - run: flutter build apk --debug --no-pub --target-platform android-arm64
