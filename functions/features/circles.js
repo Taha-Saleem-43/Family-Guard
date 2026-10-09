@@ -19,7 +19,7 @@ function createCircleManagementHandlers(db) {
         const [profile, family, oldInvites] = await Promise.all([
           tx.get(db.doc(`users/${uid}`)), tx.get(circle), tx.get(privateInvites),
         ]);
-        if (!profile.exists || profile.data().role !== 'parent' ||
+        if (!profile.exists || profile.data().deletionRequested || profile.data().role !== 'parent' ||
             profile.data().circleId !== circleId || !family.exists ||
             !family.data().memberIds?.includes(uid)) {
           throw new HttpsError('permission-denied', 'Only a parent in this circle can replace invite codes.');

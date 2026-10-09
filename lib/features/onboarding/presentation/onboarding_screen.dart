@@ -5,6 +5,7 @@ import '../../../core/providers/app_state_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../auth/domain/circle_model.dart';
 import '../../auth/providers/auth_providers.dart';
+import '../../settings/presentation/account_deletion_control.dart';
 import 'permission_gate_screen.dart';
 
 enum OnboardingStep { splash, carousel, auth, role, createCircle, circleCreated, joinCircle, childConsent, permissions }
@@ -186,6 +187,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      bottomNavigationBar: ref.watch(appStateProvider).userId.isNotEmpty &&
+              [OnboardingStep.role, OnboardingStep.createCircle, OnboardingStep.joinCircle].contains(_currentStep)
+          ? const SafeArea(child: Padding(padding: EdgeInsets.symmetric(horizontal: 24), child: AccountDeletionControl()))
+          : null,
       body: SafeArea(
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),

@@ -10,6 +10,7 @@ import '../../auth/providers/auth_providers.dart';
 import '../../map/presentation/widgets/member_detail_sheet.dart';
 import 'permission_status_card.dart';
 import 'invite_rotation_control.dart';
+import 'account_deletion_control.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -286,6 +287,8 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 24),
 
           // Sign Out / Reset
+          const AccountDeletionControl(),
+          const SizedBox(height: 12),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton.icon(

@@ -27,6 +27,7 @@ npm ci --prefix functions --ignore-scripts
 npm run test:membership
 npm run test:sos
 npm run test:invites
+npm run test:accounts
 ```
 
 Rules tests use a local `demo-family-guard` project and never deploy rules. Java 21 and Node 22 are needed for backend verification. CI runs the same checks. A passing test suite does not establish battery life or delivery reliability on devices.

@@ -41,6 +41,20 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "queryScope": "COLLECTION",
+      "collectionGroup": "accountDeletions",
+      "fields": [
+        {
+          "order": "ASCENDING",
+          "fieldPath": "status"
+        },
+        {
+          "order": "ASCENDING",
+          "fieldPath": "leaseUntil"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -67,6 +81,12 @@
       "fieldPath": "expiresAt",
       "ttl": true,
       "indexes": []
+    },
+    {
+      "fieldPath": "expireAt",
+      "indexes": [],
+      "ttl": true,
+      "collectionGroup": "accountDeletions"
     }
   ]
 }

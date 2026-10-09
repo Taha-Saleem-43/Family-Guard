@@ -20,6 +20,21 @@ before(async () => {
 });
 after(async () => { if (env) await env.cleanup(); });
 const dbFor = (uid) => env.authenticatedContext(uid).firestore();
+test('deletion tombstone blocks cached credentials and profile recreation', async () => {
+  await env.withSecurityRulesDisabled(async (context) => {
+    await setDoc(doc(context.firestore(), 'accountDeletions/deleting'), { status: 'pending' });
+    await setDoc(doc(context.firestore(), 'users/deleting'), { uid: 'deleting', circleId: 'a', role: 'parent' });
+  });
+  await assertFails(getDoc(doc(dbFor('deleting'), 'users/deleting')));
+  await assertFails(getDoc(doc(dbFor('deleting'), 'circles/a')));
+  await assertFails(updateDoc(doc(dbFor('deleting'), 'users/deleting'), { displayName: 'Changed' }));
+  await assertFails(setDoc(doc(dbFor('deleting'), 'accountDeletions/deleting'), { status: 'complete' }));
+  await env.withSecurityRulesDisabled(async (context) => {
+    const { deleteDoc } = require('firebase/firestore');
+    await deleteDoc(doc(context.firestore(), 'users/deleting'));
+  });
+  await assertFails(setDoc(doc(dbFor('deleting'), 'users/deleting'), { uid: 'deleting', displayName: 'Again', role: 'child', circleId: null }));
+});
 test('anonymous and other circles cannot read location-bearing profiles', async () => {
   await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(), 'users/childA')));
   await assertFails(getDoc(doc(dbFor('parentB'), 'users/childA')));

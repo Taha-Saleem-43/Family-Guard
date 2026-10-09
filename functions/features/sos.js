@@ -51,7 +51,7 @@ function createSOSHandlers(db) {
         const [user, existing, circle] = await Promise.all([
           tx.get(profile), tx.get(alert), tx.get(db.doc(`circles/${data.circleId}`)),
         ]);
-        if (!user.exists || user.data().circleId !== data.circleId ||
+        if (!user.exists || user.data().deletionRequested || user.data().circleId !== data.circleId ||
             !circle.exists || !circle.data().memberIds?.includes(uid)) {
           throw new HttpsError('permission-denied', 'You must belong to this family circle.');
         }
@@ -98,7 +98,7 @@ function createSOSHandlers(db) {
         const alertRef = db.doc(`sos_alerts/${alertId}`);
         const profile = db.doc(`users/${uid}`);
         const [alert, user] = await Promise.all([tx.get(alertRef), tx.get(profile)]);
-        if (!alert.exists || alert.data().senderId !== uid || !user.exists ||
+        if (!alert.exists || alert.data().senderId !== uid || !user.exists || user.data().deletionRequested ||
             alert.data().circleId !== user.data().circleId) {
           throw new HttpsError('permission-denied', 'Only the sender can resolve this emergency.');
         }

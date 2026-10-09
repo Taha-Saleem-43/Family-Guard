@@ -34,13 +34,15 @@ History readers now query Firestore timestamps and parents filter by the recorde
 - Native geofence transition processing and alerts; do not advertise it as working until tested end to end.
 - Durable offline upload storage, retry/backoff and cross-isolate/device ordering reconciliation, accurate connectivity/freshness reporting and adaptive battery tuning. Current serialization is process-local and does not establish durable recovery by itself.
 - Legacy history migration UX and performance benchmarks for very large loaded routes.
-- Account deletion and membership removal backend flows.
+- Account-deletion staging/device verification, public web deletion-request URL and operational monitoring; membership removal and parent handoff flows.
 - Android target API/release identity/signing checks, supported-device background/boot/permission-revocation tests and battery benchmarks.
 - Privacy policy, prominent background-location disclosure, data-safety declaration, store assets and closed testing.
 
 New personal Play accounts currently require at least 12 opted-in testers continuously for 14 days before applying for production access. See [Google's testing requirements](https://support.google.com/googleplay/android-developer/answer/14151465). A closed-test build is the next-week target; public availability depends on account eligibility and review.
 
 ## Verification
+
+Account deletion: all 95 Flutter tests passed, including dialog cancellation/confirmation and scoped preferences. Five deletion emulator tests passed; 30 security/membership/SOS/invite regressions passed, including cached-token denial and profile recreation prevention. Final app/test analysis is clean. Backend Auth is mocked in deletion tests. Deployment and production deletion have not been performed. See `docs/ACCOUNT_DELETION.md` for scope and remaining release gates, including Firestore offline-cache erasure.
 
 History pagination: the full 90-test Flutter suite passed, then all 9 targeted history tests passed including the new load-older widget/retry test. All 13 rules emulator tests passed, including identical-timestamp cursor ordering. Final app/test analysis and final widget-test analysis are clean. Older-page failures retain existing data, repeated load-more taps are coalesced, and late results cannot restore data after an account switch.
 

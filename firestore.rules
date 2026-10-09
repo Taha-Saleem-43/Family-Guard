@@ -1,11 +1,16 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
+    function signedIn() {
+      return request.auth != null
+        && !exists(/databases/$(database)/documents/accountDeletions/$(request.auth.uid));
+    }
     function owner(uid) { return signedIn() && request.auth.uid == uid; }
     function me() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
     function member(circleId) {
-      return signedIn() && circleId is string && circleId.size() > 0 && me().circleId == circleId;
+      return signedIn() && circleId is string && circleId.size() > 0 && me().circleId == circleId
+        && !me().get('deletionRequested', false)
+        && exists(/databases/$(database)/documents/circles/$(circleId));
     }
     function parent(circleId) { return member(circleId) && me().role == 'parent'; }
     function sameCircleUser(uid) {
@@ -31,11 +36,13 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if owner(uid) || parent(resource.data.circleId);
       allow create: if owner(uid)
+        && !exists(/databases/$(database)/documents/accountDeletions/$(uid))
         && request.resource.data.keys().hasOnly(['uid', 'email', 'displayName', 'role', 'circleId', 'createdAt'])
         && request.resource.data.uid == uid && request.resource.data.role == 'child'
         && request.resource.data.circleId == null && request.resource.data.displayName is string
         && request.resource.data.displayName.size() > 0 && request.resource.data.displayName.size() <= 80;
       allow update: if owner(uid)
+        && !resource.data.get('deletionRequested', false)
         && validProfileUpdate()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           'displayName', 'latitude', 'longitude', 'speedMph', 'movementActivity',

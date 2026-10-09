@@ -2,6 +2,7 @@ import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:tracelet/tracelet.dart' as tl;
 import '../../../core/models/member.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/services/user_session_service.dart';
@@ -78,6 +79,10 @@ class AuthService {
         'Account profile is unavailable. Please contact support.',
       );
     }
+    if (doc.data()?['deletionRequested'] == true) {
+      await _auth.signOut();
+      throw Exception('Account deletion is processing.');
+    }
     final account = UserAccountModel.fromMap(doc.data()!, user.uid);
     await UserSessionService.saveUserSession(
       uid: user.uid,
@@ -117,6 +122,68 @@ class AuthService {
     await _auth.signOut();
     if (uid != null) await UserSessionService.clearUserSession(uid);
     await LocationService.clearDebugLog();
+  }
+
+  void _requireCurrentUid(String uid) {
+    if (_auth.currentUser?.uid != uid) {
+      throw StateError('Your account changed.');
+    }
+  }
+
+  Future<void> verifyDeletionSignIn(String uid, String password) async {
+    _requireCurrentUid(uid);
+    final user = _auth.currentUser!;
+    final email = user.email;
+    if (email == null) throw StateError('Sign-in verification is unavailable.');
+    await user.reauthenticateWithCredential(
+      EmailAuthProvider.credential(email: email, password: password),
+    );
+    await user.getIdToken(true);
+    _requireCurrentUid(uid);
+  }
+
+  Future<void> pauseDeletionSharing(String uid) async {
+    _requireCurrentUid(uid);
+    await LocationService.instance.stop();
+    _requireCurrentUid(uid);
+  }
+
+  Future<bool> enqueueAccountDeletion(String uid) async {
+    _requireCurrentUid(uid);
+    final result = await _functions
+        .httpsCallable(
+          'requestAccountDeletion',
+          options: HttpsCallableOptions(timeout: const Duration(seconds: 30)),
+        )
+        .call({'expectedUid': uid});
+    return result.data is Map && result.data['accepted'] == true;
+  }
+
+  Future<void> clearDeletedAccountLocalData(String uid) async {
+    if (_auth.currentUser != null && _auth.currentUser?.uid != uid) {
+      throw StateError('Account changed; local tracking data was not cleared.');
+    }
+    var nativeComplete = true;
+    try {
+      if (!await tl.Tracelet.destroyLocations()) nativeComplete = false;
+    } catch (_) {
+      nativeComplete = false;
+    }
+    try {
+      if (!await tl.Tracelet.removeGeofences()) nativeComplete = false;
+    } catch (_) {
+      nativeComplete = false;
+    }
+    await LocationService.clearDebugLog();
+    await UserSessionService.deleteUserSession(uid);
+    if (!nativeComplete) {
+      throw StateError('Native tracking data cleanup was incomplete.');
+    }
+  }
+
+  Future<void> signOutDeletedAccount(String uid) async {
+    if (_auth.currentUser?.uid == uid) await _auth.signOut();
+    await UserSessionService.deleteUserSession(uid);
   }
 
   Future<DateTime> rotateCircleInvites(String circleId) async {

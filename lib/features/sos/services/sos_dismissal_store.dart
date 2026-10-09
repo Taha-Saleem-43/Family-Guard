@@ -9,6 +9,7 @@ abstract class SOSDismissalStore {
 class PreferencesSOSDismissalStore implements SOSDismissalStore {
   // Shared across provider recreation so a late older write cannot replace a newer dismissal.
   static Future<void> _pendingWrites = Future.value();
+  static Future<void> drainPendingWrites() => _pendingWrites;
   static final Map<String, List<String>> _pendingSnapshots = {};
   final Future<bool> Function(String, List<String>)? _write;
   PreferencesSOSDismissalStore({
