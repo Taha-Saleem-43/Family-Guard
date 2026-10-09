@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/app_state_provider.dart';
@@ -37,8 +39,15 @@ class _AccountDeletionControlState
     extends ConsumerState<AccountDeletionControl> {
   bool _busy = false;
   String? _error;
+  String _currentUid() {
+    if (Firebase.apps.isNotEmpty) {
+      return FirebaseAuth.instance.currentUser?.uid ?? '';
+    }
+    return ref.read(appStateProvider).userId;
+  }
+
   Future<void> _request() async {
-    final uid = ref.read(appStateProvider).userId;
+    final uid = _currentUid();
     if (uid.isEmpty || _busy) return;
     final password = TextEditingController();
     final confirmation = DialogRoute<String>(
@@ -86,7 +95,7 @@ class _AccountDeletionControlState
       rootNavigator: true,
     ).push(confirmation);
     unawaited(confirmation.completed.then((_) => password.dispose()));
-    if (!mounted || value == null) return;
+    if (!mounted || value == null || _currentUid() != uid) return;
     final action = ref.read(accountDeletionActionProvider);
     final navigator = Navigator.of(context, rootNavigator: true);
     final messenger = ScaffoldMessenger.of(context);
@@ -113,7 +122,7 @@ class _AccountDeletionControlState
     unawaited(navigator.push(progress));
     try {
       final receipt = await action(uid, value);
-      final currentUid = ref.read(appStateProvider).userId;
+      final currentUid = _currentUid();
       if (messenger.mounted && (currentUid.isEmpty || currentUid == uid)) {
         messenger.showSnackBar(
           SnackBar(
@@ -147,7 +156,8 @@ class _AccountDeletionControlState
 
   @override
   Widget build(BuildContext context) {
-    final uid = ref.watch(appStateProvider.select((state) => state.userId));
+    ref.watch(appStateProvider.select((state) => state.userId));
+    final uid = _currentUid();
     return Column(
       children: [
         if (_error != null)

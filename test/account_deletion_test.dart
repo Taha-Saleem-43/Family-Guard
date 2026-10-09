@@ -8,6 +8,37 @@ import 'package:family_guard/features/settings/presentation/account_deletion_con
 import 'package:family_guard/features/auth/services/account_deletion_service.dart';
 
 void main() {
+  testWidgets('an account switch during confirmation cancels deletion', (
+    tester,
+  ) async {
+    final state = AppStateNotifier();
+    state.setUserSession(userId: 'first', circleId: '');
+    var requests = 0;
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appStateProvider.overrideWith((ref) => state),
+          accountDeletionActionProvider.overrideWithValue((
+            uid,
+            password,
+          ) async {
+            requests++;
+            return const AccountDeletionReceipt(localCleanupComplete: true);
+          }),
+        ],
+        child: const MaterialApp(
+          home: Scaffold(body: AccountDeletionControl()),
+        ),
+      ),
+    );
+    await tester.tap(find.text('Delete account'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'secret');
+    state.setUserSession(userId: 'second', circleId: '');
+    await tester.tap(find.text('Request deletion'));
+    await tester.pumpAndSettle();
+    expect(requests, 0);
+  });
   test('local deletion preserves similarly prefixed accounts', () async {
     SharedPreferences.setMockInitialValues({
       'fg_active_user_uid': 'a_b',

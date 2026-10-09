@@ -19,6 +19,7 @@ import 'features/home/presentation/main_shell.dart';
 import 'features/onboarding/presentation/onboarding_screen.dart';
 import 'firebase_options.dart';
 import 'features/auth/services/auth_service.dart';
+import 'features/settings/presentation/account_deletion_control.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Headless location callback — fires when Tracelet wakes the isolate
@@ -193,6 +194,24 @@ class _FamilyGuardAppState extends ConsumerState<FamilyGuardApp>
     }
   }
 
+  Future<void> _signOut() async {
+    final uid = Firebase.apps.isNotEmpty
+        ? FirebaseAuth.instance.currentUser?.uid
+        : null;
+    if (uid == null) return;
+    try {
+      await AuthService().signOut();
+    } catch (_) {
+      if (mounted &&
+          Firebase.apps.isNotEmpty &&
+          FirebaseAuth.instance.currentUser?.uid == uid) {
+        setState(
+          () => _restoreError = 'Could not finish signing out. Please retry.',
+        );
+      }
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -210,6 +229,7 @@ class _FamilyGuardAppState extends ConsumerState<FamilyGuardApp>
         user,
       ) {
         if (user == null && mounted) {
+          setState(() => _restoreError = null);
           ref.read(appStateProvider.notifier).resetToOnboarding();
           unawaited(LocationService.instance.stop().catchError((Object _) {}));
         }
@@ -261,6 +281,11 @@ class _FamilyGuardAppState extends ConsumerState<FamilyGuardApp>
                         onPressed: _restore,
                         child: const Text('Retry'),
                       ),
+                      TextButton(
+                        onPressed: _signOut,
+                        child: const Text('Sign out'),
+                      ),
+                      const AccountDeletionControl(),
                     ],
                   ),
                 ),
@@ -281,20 +306,10 @@ class _FamilyGuardAppState extends ConsumerState<FamilyGuardApp>
                       child: const Text('Retry'),
                     ),
                     TextButton(
-                      onPressed: () async {
-                        try {
-                          await AuthService().signOut();
-                        } catch (_) {
-                          if (mounted) {
-                            setState(
-                              () => _restoreError =
-                                  'Could not finish signing out. Please retry.',
-                            );
-                          }
-                        }
-                      },
+                      onPressed: _signOut,
                       child: const Text('Sign out'),
                     ),
+                    const AccountDeletionControl(),
                   ],
                 ),
               ),

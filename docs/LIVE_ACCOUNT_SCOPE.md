@@ -6,7 +6,9 @@ While the main app is open, an owner-profile listener accepts confirmed server s
 
 The MaterialApp navigator is keyed by the active account/circle/role scope. Leaving that scope clears outstanding dialogs and routes, including private detail views. Onboarding keeps its own stable key during ordinary circle creation so the invite-code screen remains available. Existing authenticated accounts without a circle resume circle setup instead of being asked to register again.
 
-Circle access loss retains the authenticated UID while blocking private screens. A later server profile detached from the lost circle can resume setup; stale data from the inaccessible circle cannot restore access. Deletion/read denial shows a paused-account screen with verification retry and sign-out actions. Firebase authorization remains the authority for every backend operation.
+Circle access loss retains the authenticated UID while blocking private screens. A later server profile detached from the lost circle can resume setup; stale data from the inaccessible circle cannot restore access. Both the paused-account and verification-failure screens retain retry, sign-out and account deletion controls. Deletion uses the current SDK identity even when the profile could not be loaded, and rechecks that identity after confirmation. Firebase authorization remains the authority for every backend operation.
+
+Creating or joining a new circle atomically removes previous live coordinates, movement, capture watermarks and battery fields from the profile and removes the legacy live-location document. Redeeming an invite again within the same circle preserves its current live fix. Historical points keep their original circle scope; they are not reassigned to new members.
 
 Callbacks are fenced by subscription generation and current Firebase UID. An old account's late snapshot cannot change a new or signed-out session. Onboarding operations check mounted state before applying asynchronous SDK results.
 
