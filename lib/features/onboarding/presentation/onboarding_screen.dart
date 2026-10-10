@@ -9,10 +9,10 @@ import '../../auth/domain/circle_model.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../../settings/presentation/account_deletion_control.dart';
 import 'permission_gate_screen.dart';
+import 'interactive_intro.dart';
 
 enum OnboardingStep {
-  splash,
-  carousel,
+  intro,
   auth,
   role,
   createCircle,
@@ -31,8 +31,7 @@ class OnboardingScreen extends ConsumerStatefulWidget {
 }
 
 class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
-  OnboardingStep _currentStep = OnboardingStep.splash;
-  int _carouselIndex = 0;
+  OnboardingStep _currentStep = OnboardingStep.intro;
   bool _isSignUp = true;
   bool _isLoading = false;
   bool _passwordVisible = false;
@@ -70,30 +69,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     _inviteCodeController.dispose();
     super.dispose();
   }
-
-  final List<Map<String, dynamic>> _slides = [
-    {
-      'icon': Icons.my_location_rounded,
-      'title': "See your family's location",
-      'body':
-          'See recent shared locations. Background updates depend on permissions, connectivity and Android settings.',
-      'gradient': [const Color(0xFF3B82F6), const Color(0xFF2563EB)],
-    },
-    {
-      'icon': Icons.notifications_active_rounded,
-      'title': 'Get alerts when they arrive',
-      'body':
-          'Save Places like Home and School to see confirmed arrival and departure activity. Notifications can be delayed.',
-      'gradient': [const Color(0xFF0D9488), const Color(0xFF0F766E)],
-    },
-    {
-      'icon': Icons.sos_rounded,
-      'title': 'SOS for emergencies',
-      'body':
-          'Send an SOS to your family circle when connected. Check delivery status in the app; notifications may be delayed.',
-      'gradient': [const Color(0xFF8B5CF6), const Color(0xFF7C3AED)],
-    },
-  ];
 
   Future<void> _handleAuthSubmit() async {
     if (_isLoading) return;
@@ -315,10 +290,18 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   Widget _buildStepContent() {
     switch (_currentStep) {
-      case OnboardingStep.splash:
-        return _buildSplash();
-      case OnboardingStep.carousel:
-        return _buildCarousel();
+      case OnboardingStep.intro:
+        return InteractiveIntro(
+          key: const ValueKey('interactive-intro'),
+          onStart: () => setState(() {
+            _isSignUp = true;
+            _currentStep = OnboardingStep.auth;
+          }),
+          onSignIn: () => setState(() {
+            _isSignUp = false;
+            _currentStep = OnboardingStep.auth;
+          }),
+        );
       case OnboardingStep.auth:
         return _buildAuth();
       case OnboardingStep.role:
@@ -337,196 +320,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     }
   }
 
-  // 1. Splash Screen
-  Widget _buildSplash() {
-    return SetupScrollView(
-      child: Container(
-        key: const ValueKey('splash'),
-        width: double.infinity,
-        color: AppColors.primary,
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 40),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const SizedBox(height: 32),
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.shield_outlined,
-                size: 72,
-                color: Colors.white,
-              ),
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'FamilyGuard',
-              style: TextStyle(
-                fontSize: 38,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-                letterSpacing: -0.5,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Stay connected. Stay safe.',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-                color: Colors.white.withValues(alpha: 0.9),
-              ),
-            ),
-            const SizedBox(height: 32),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: AppColors.primary,
-                  padding: const EdgeInsets.symmetric(vertical: 18),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(30),
-                  ),
-                  elevation: 4,
-                ),
-                onPressed: () =>
-                    setState(() => _currentStep = OnboardingStep.carousel),
-                child: const Text(
-                  'Get started',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // 2. Carousel Screen
-  Widget _buildCarousel() {
-    final slide = _slides[_carouselIndex];
-    final gradientColors = slide['gradient'] as List<Color>;
-
-    return SetupScrollView(
-      child: Container(
-        key: ValueKey('carousel_$_carouselIndex'),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: gradientColors,
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-        ),
-        padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 32),
-        child: Column(
-          children: [
-            const SizedBox(height: 32),
-            Icon(slide['icon'] as IconData, size: 84, color: Colors.white),
-            const SizedBox(height: 32),
-            Text(
-              slide['title'] as String,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 30,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-                height: 1.2,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              slide['body'] as String,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w500,
-                color: Colors.white.withValues(alpha: 0.85),
-                height: 1.4,
-              ),
-            ),
-            const SizedBox(height: 32),
-            // Dots indicator
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                _slides.length,
-                (index) => AnimatedContainer(
-                  duration: const Duration(milliseconds: 300),
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: index == _carouselIndex ? 32 : 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: index == _carouselIndex
-                        ? Colors.white
-                        : Colors.white.withValues(alpha: 0.4),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-            Row(
-              children: [
-                if (_carouselIndex > 0) ...[
-                  Expanded(
-                    child: TextButton(
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                      onPressed: () => setState(() => _carouselIndex--),
-                      child: const Text(
-                        'Back',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                ],
-                Expanded(
-                  flex: 2,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: AppColors.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 18),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    onPressed: () {
-                      if (_carouselIndex < _slides.length - 1) {
-                        setState(() => _carouselIndex++);
-                      } else {
-                        setState(() => _currentStep = OnboardingStep.auth);
-                      }
-                    },
-                    child: Text(
-                      _carouselIndex < _slides.length - 1 ? 'Next' : 'Continue',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   // 3. Auth Screen (Sign Up / Sign In)
   Widget _buildAuth() {
     return SetupScrollView(
@@ -539,7 +332,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           children: [
             IconButton(
               onPressed: () =>
-                  setState(() => _currentStep = OnboardingStep.carousel),
+                  setState(() => _currentStep = OnboardingStep.intro),
               icon: const Icon(
                 Icons.arrow_back_rounded,
                 color: AppColors.textSecondary,

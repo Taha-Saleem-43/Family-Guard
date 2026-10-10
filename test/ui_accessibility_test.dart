@@ -54,7 +54,7 @@ void main() {
     tester,
   ) async {
     await show(tester, const OnboardingScreen(), inset: 220);
-    for (final label in ['Get started', 'Next', 'Next', 'Continue']) {
+    for (final label in ['Get started']) {
       final action = find.widgetWithText(ElevatedButton, label);
       await tester.ensureVisible(action);
       await tester.tap(action);

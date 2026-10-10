@@ -80,6 +80,7 @@ dependencies:
   battery_plus: ^6.0.0
   audioplayers: ^6.7.1
   vibration: ^3.2.0
+  video_player: ^2.10.0
 
 dev_dependencies:
   flutter_test:
@@ -112,6 +113,8 @@ flutter:
 
   assets:
     - assets/sounds/
+    - assets/branding/
+    - assets/videos/
 
 
   # An image asset can refer to one or more resolution-specific "variants", see
