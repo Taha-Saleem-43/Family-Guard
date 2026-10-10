@@ -19,3 +19,11 @@ Deploy the `ingestLocations` callable before publishing the matching rules/clien
 - `npm run test:locations`: real emulator transactions covering retry deduplication, conflicting IDs, simultaneous writers, offline capture timestamps, invalid input, membership changes and account deletion.
 - `cd tool/sqlite_tests; flutter pub get --enforce-lockfile; flutter test`: real SQLite reopen/recovery, competing claims, lease expiry, stale acknowledgements, logout fences, retry backoff and persistent sampling. FFI dependencies belong only to this test package and are absent from the Android app dependency graph.
 - Physical Android gates: airplane-mode recovery, swipe-away/reboot headless plugin registration, logout/relogin while uploads are active, circle changes during an outage, clock changes, permission withdrawal, battery consumption and the signed release build. These have not been claimed as passed without a device.
+
+## Map handoff and reported accuracy
+
+Member details offer Open in Google Maps for locations the viewer can already see, plus Get directions for a parent viewing another circle member. Universal HTTPS Maps URLs require no API key; Google Maps handles app/browser routing. Names and account IDs are not included. The destination is a captured location, not a live external tracking feed. Stale positions remain available with a warning; missing or invalid coordinates cannot be opened.
+
+Native horizontal accuracy is preserved as optional accuracyMeters through the outbox, ingestion, history and live profile. The app displays a reported uncertainty circle and numeric estimate; this does not guarantee the person is inside it. Old fixes remain accepted. A newer fix without accuracy clears the previous estimate. Deploy the updated ingestLocations callable before shipping this client; an older backend discards the new field. No production deployment was performed.
+
+Tracking sampling remains battery-conscious until physical-device accuracy and power measurements support a change. Before production growth, select tile hosting with suitable capacity and terms. Public OSM tiles provide no SLA or unlimited capacity; follow https://operations.osmfoundation.org/policies/tiles/ (including caching, attribution, identifiable requests and no bulk/offline prefetch).

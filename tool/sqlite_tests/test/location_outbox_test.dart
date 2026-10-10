@@ -11,6 +11,7 @@ void main() {
   Map<String, Object> fix(String id, int time) => {
     'id': id,
     'capturedAt': time,
+    'accuracyMeters': 12.5,
   };
   setUp(() async {
     directory = await Directory.systemTemp.createTemp('family-guard-outbox-');
@@ -32,6 +33,7 @@ void main() {
       await store.close();
       final lease = await store.claim('one', now);
       expect(lease!.fixes.length, 1);
+      expect(lease.fixes.single['accuracyMeters'], 12.5);
       await store.acknowledge(lease, ['a']);
       expect(await store.claim('one', now), isNull);
     },

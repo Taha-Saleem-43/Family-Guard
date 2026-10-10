@@ -1,62 +1,63 @@
-import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+typedef MapsUrlLauncher = Future<bool> Function(Uri url, LaunchMode mode);
+
+/// Opens Google Maps using universal URLs, without an API key or Maps SDK.
 class NavigationService {
   NavigationService._();
 
-  /// Launches native turn-by-turn navigation (Google Maps / Apple Maps / Web fallback)
-  /// to the target latitude and longitude coordinates.
+  static bool hasValidCoordinates(double? latitude, double? longitude) =>
+      latitude != null &&
+      longitude != null &&
+      latitude.isFinite &&
+      longitude.isFinite &&
+      latitude.abs() <= 90 &&
+      longitude.abs() <= 180;
+
+  static Future<bool> openInGoogleMaps({
+    required double latitude,
+    required double longitude,
+    MapsUrlLauncher? launcher,
+  }) => _open(latitude, longitude, directions: false, launcher: launcher);
+
   static Future<bool> launchTurnByTurnNavigation({
     required double latitude,
     required double longitude,
     String? label,
+    MapsUrlLauncher? launcher,
+  }) => _open(latitude, longitude, directions: true, launcher: launcher);
+
+  static Future<bool> _open(
+    double latitude,
+    double longitude, {
+    required bool directions,
+    MapsUrlLauncher? launcher,
   }) async {
-    final String labelQuery = Uri.encodeComponent(label ?? "Child Location");
-    final Uri geoUri = Uri.parse('geo:$latitude,$longitude?q=$latitude,$longitude($labelQuery)');
-    final Uri googleMapsUri = Uri.parse('https://www.google.com/maps/dir/?api=1&destination=$latitude,$longitude');
-
-    // 1. Try native geo URI scheme (native Google Maps / Apple Maps intent)
-    try {
-      if (await canLaunchUrl(geoUri)) {
-        final bool launched = await launchUrl(
-          geoUri,
-          mode: LaunchMode.externalApplication,
-        );
-        if (launched) return true;
-      }
-    } catch (e) {
-      debugPrint('[NavigationService] Geo URI check failed: $e');
-    }
-
-    // 2. Try standard Google Maps web/app deep link with canLaunchUrl check
-    try {
-      if (await canLaunchUrl(googleMapsUri)) {
-        final bool launched = await launchUrl(
-          googleMapsUri,
-          mode: LaunchMode.externalApplication,
-        );
-        if (launched) return true;
-      }
-    } catch (e) {
-      debugPrint('[NavigationService] Google Maps URI check failed: $e');
-    }
-
-    // 3. Direct launch fallbacks (bypasses canLaunchUrl restriction on Android 11+ / iOS)
-    try {
-      return await launchUrl(
-        googleMapsUri,
-        mode: LaunchMode.externalApplication,
-      );
-    } catch (e) {
+    if (!hasValidCoordinates(latitude, longitude)) return false;
+    final coordinates = '$latitude,$longitude';
+    final url = Uri.https(
+      'www.google.com',
+      directions ? '/maps/dir/' : '/maps/search/',
+      {
+        'api': '1',
+        if (directions) 'destination': coordinates else 'query': coordinates,
+        if (directions) 'dir_action': 'navigate',
+      },
+    );
+    final launch =
+        launcher ?? (Uri url, LaunchMode mode) => launchUrl(url, mode: mode);
+    // Universal links open the Google Maps app when installed, or a browser.
+    // A false return and a platform exception both need a fallback.
+    for (final mode in [
+      LaunchMode.externalApplication,
+      LaunchMode.platformDefault,
+    ]) {
       try {
-        return await launchUrl(
-          googleMapsUri,
-          mode: LaunchMode.platformDefault,
-        );
-      } catch (err) {
-        debugPrint('[NavigationService] All navigation launch fallbacks failed: $err');
-        return false;
+        if (await launch(url, mode)) return true;
+      } catch (_) {
+        // Do not log family coordinates or URLs.
       }
     }
+    return false;
   }
 }

@@ -12,6 +12,7 @@ class Member extends Equatable {
   final UserRole role;
   final double? latitude;
   final double? longitude;
+  final double? accuracyMeters;
   final String address;
   final DateTime lastSeen;
   final int batteryLevel;
@@ -29,6 +30,7 @@ class Member extends Equatable {
     required this.role,
     this.latitude,
     this.longitude,
+    this.accuracyMeters,
     required this.address,
     required this.lastSeen,
     required this.batteryLevel,
@@ -47,6 +49,7 @@ class Member extends Equatable {
     UserRole? role,
     double? latitude,
     double? longitude,
+    double? accuracyMeters,
     String? address,
     DateTime? lastSeen,
     int? batteryLevel,
@@ -64,6 +67,7 @@ class Member extends Equatable {
       role: role ?? this.role,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
+      accuracyMeters: accuracyMeters ?? this.accuracyMeters,
       address: address ?? this.address,
       lastSeen: lastSeen ?? this.lastSeen,
       batteryLevel: batteryLevel ?? this.batteryLevel,
@@ -78,20 +82,21 @@ class Member extends Equatable {
 
   @override
   List<Object?> get props => [
-        id,
-        name,
-        avatar,
-        role,
-        latitude,
-        longitude,
-        address,
-        lastSeen,
-        batteryLevel,
-        isCharging,
-        speedMph,
-        movementActivity,
-        pinColor,
-        isStale,
-        isSosActive,
-      ];
+    id,
+    name,
+    avatar,
+    role,
+    latitude,
+    longitude,
+    accuracyMeters,
+    address,
+    lastSeen,
+    batteryLevel,
+    isCharging,
+    speedMph,
+    movementActivity,
+    pinColor,
+    isStale,
+    isSosActive,
+  ];
 }

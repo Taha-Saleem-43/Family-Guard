@@ -6,6 +6,7 @@ import '../../../../core/models/movement_activity.dart';
 import '../../../../core/providers/app_state_provider.dart';
 import '../../../../core/providers/member_status_provider.dart';
 import '../../../../core/services/navigation_service.dart';
+import '../../../../core/services/member_profile_decoder.dart';
 import '../../../../core/theme/app_colors.dart';
 
 class MemberDetailSheet extends ConsumerWidget {
@@ -38,23 +39,30 @@ class MemberDetailSheet extends ConsumerWidget {
 
     // Watch current member list in case state changes live
     final members = ref.watch(memberStateProvider);
-    final currentMember = members.firstWhere((m) => m.id == member.id, orElse: () => member);
+    final currentMember = members.firstWhere(
+      (m) => m.id == member.id,
+      orElse: () => member,
+    );
 
     final activity = currentMember.movementActivity;
     final batColor = BatteryHelper.getColor(currentMember.batteryLevel);
-    final batIcon = BatteryHelper.getIcon(currentMember.batteryLevel, isCharging: currentMember.isCharging);
+    final batIcon = BatteryHelper.getIcon(
+      currentMember.batteryLevel,
+      isCharging: currentMember.isCharging,
+    );
     final isTargetParent = currentMember.role == UserRole.parent;
-    final isSelf = currentMember.id == selfId ||
-        currentMember.id == 'm_self' ||
-        currentMember.name.contains('(You)') ||
-        (appState.userId.isNotEmpty && currentMember.id == appState.userId);
+    final isSelf = currentMember.id == selfId;
 
-    // Get Directions is ONLY available when a Parent is viewing ANOTHER member who is a Child
-    final canGetDirections = isViewerParent &&
-        !isSelf &&
-        currentMember.role == UserRole.child &&
-        currentMember.latitude != null &&
-        currentMember.longitude != null;
+    // Match the map's visibility boundary.
+    final hasLocation = NavigationService.hasValidCoordinates(
+      currentMember.latitude,
+      currentMember.longitude,
+    );
+    final canOpenMaps = hasLocation && (isViewerParent || isSelf);
+    final canGetDirections = canOpenMaps && isViewerParent && !isSelf;
+    final stale =
+        currentMember.isStale ||
+        !MemberProfileDecoder.isFresh(currentMember.lastSeen, DateTime.now());
 
     return Container(
       decoration: const BoxDecoration(
@@ -74,195 +82,297 @@ class MemberDetailSheet extends ConsumerWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-          // Drag handle indicator bar
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey.shade300,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Header: Avatar, Name, Role Badge, and Close Button
-          Row(
-            children: [
-              Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(3),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: currentMember.pinColor, width: 3),
-                      boxShadow: [
-                        BoxShadow(
-                          color: currentMember.pinColor.withValues(alpha: 0.3),
-                          blurRadius: 10,
-                        ),
-                      ],
-                    ),
-                    child: CircleAvatar(
-                      radius: 26,
-                      backgroundColor: currentMember.pinColor.withValues(alpha: 0.15),
-                      child: Text(currentMember.avatar, style: const TextStyle(fontSize: 26)),
-                    ),
-                  ),
-                  Positioned(
-                    right: -2,
-                    top: -2,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: activity.color, width: 1.5),
-                        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 4)],
-                      ),
-                      child: Text(activity.emoji, style: const TextStyle(fontSize: 13)),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          currentMember.name,
-                          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
-                        ),
-                        const SizedBox(width: 8),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                          decoration: BoxDecoration(
-                            color: isTargetParent ? AppColors.primaryLight : AppColors.tealLight,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            isTargetParent ? 'Parent' : 'Child',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w800,
-                              color: isTargetParent ? AppColors.primary : AppColors.teal,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Live Tracking Details',
-                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w600),
-                    ),
-                  ],
-                ),
-              ),
-              IconButton(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close_rounded, size: 22, color: AppColors.textMuted),
-                style: IconButton.styleFrom(
-                  backgroundColor: Colors.grey.shade100,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 16),
-
-          // Primary "Get Directions" Button (Only available for Parent viewing Child)
-          if (canGetDirections) ...[
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () async {
-                  final success = await NavigationService.launchTurnByTurnNavigation(
-                    latitude: currentMember.latitude!,
-                    longitude: currentMember.longitude!,
-                    label: currentMember.name,
-                  );
-                  if (context.mounted && !success) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Unable to launch navigation maps app.')),
-                    );
-                  }
-                },
-                icon: const Icon(Icons.directions_car_rounded, color: Colors.white, size: 20),
-                label: Text(
-                  'Get Directions to ${currentMember.name.split(' ').first} 🚗',
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.white),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  elevation: 2,
+            // Drag handle indicator bar
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.shade300,
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
             ),
             const SizedBox(height: 16),
-          ],
 
-          // 2x2 Grid of Status Cards
-          GridView.count(
-            crossAxisCount: 2,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            mainAxisSpacing: 12,
-            crossAxisSpacing: 12,
-            childAspectRatio: 1.5,
-            children: [
-              // 1. Speed & Movement Activity Card
-              _buildDetailCard(
-                icon: activity.icon,
-                iconColor: activity.color,
-                bgColor: activity.bgColor,
-                title: 'Speed & Motion',
-                value: '${currentMember.speedMph.toStringAsFixed(1)} mph',
-                subtitle: '${activity.emoji} ${activity.label}',
-              ),
+            // Header: Avatar, Name, Role Badge, and Close Button
+            Row(
+              children: [
+                Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: currentMember.pinColor,
+                          width: 3,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: currentMember.pinColor.withValues(
+                              alpha: 0.3,
+                            ),
+                            blurRadius: 10,
+                          ),
+                        ],
+                      ),
+                      child: CircleAvatar(
+                        radius: 26,
+                        backgroundColor: currentMember.pinColor.withValues(
+                          alpha: 0.15,
+                        ),
+                        child: Text(
+                          currentMember.avatar,
+                          style: const TextStyle(fontSize: 26),
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      right: -2,
+                      top: -2,
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: activity.color, width: 1.5),
+                          boxShadow: const [
+                            BoxShadow(color: Colors.black12, blurRadius: 4),
+                          ],
+                        ),
+                        child: Text(
+                          activity.emoji,
+                          style: const TextStyle(fontSize: 13),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              currentMember.name,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 3,
+                            ),
+                            decoration: BoxDecoration(
+                              color: isTargetParent
+                                  ? AppColors.primaryLight
+                                  : AppColors.tealLight,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              isTargetParent ? 'Parent' : 'Child',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: isTargetParent
+                                    ? AppColors.primary
+                                    : AppColors.teal,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Last shared location',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(
+                    Icons.close_rounded,
+                    size: 22,
+                    color: AppColors.textMuted,
+                  ),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.grey.shade100,
+                  ),
+                ),
+              ],
+            ),
 
-              // 2. Battery Status Badge Card
-              _buildBatteryCard(
-                batLevel: currentMember.batteryLevel,
-                isCharging: currentMember.isCharging,
-                batColor: batColor,
-                batIcon: batIcon,
-              ),
+            const SizedBox(height: 16),
 
-              // 3. Location Address Card
-              _buildDetailCard(
-                icon: Icons.location_on_rounded,
-                iconColor: AppColors.primary,
-                bgColor: AppColors.primaryLight,
-                title: 'Address',
-                value: currentMember.address,
-                subtitle: 'Lat: ${currentMember.latitude?.toStringAsFixed(4) ?? "33.6844"} • Lng: ${currentMember.longitude?.toStringAsFixed(4) ?? "73.0479"}',
+            // External maps show a captured position, not a live family feed.
+            Text(
+              !hasLocation
+                  ? 'Location not available yet.'
+                  : stale
+                  ? 'Location may be outdated · Updated ${_getRelativeTime(currentMember.lastSeen)}'
+                  : 'Updated ${_getRelativeTime(currentMember.lastSeen)}',
+              style: TextStyle(
+                color: stale ? Colors.deepOrange.shade800 : AppColors.textMuted,
               ),
-
-              // 4. Timestamp Card
-              _buildDetailCard(
-                icon: Icons.access_time_filled_rounded,
-                iconColor: const Color(0xFF8B5CF6),
-                bgColor: const Color(0xFFF3E8FF),
-                title: 'Timestamp',
-                value: _getRelativeTime(currentMember.lastSeen),
-                subtitle: DateFormat('h:mm:ss a').format(currentMember.lastSeen),
+            ),
+            if (hasLocation)
+              Text(
+                currentMember.accuracyMeters == null
+                    ? 'Accuracy unavailable'
+                    : 'Reported accuracy: ±${currentMember.accuracyMeters!.ceil()} m',
               ),
+            if (canOpenMaps) ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Opens the last shared position. Live updates stay in FamilyGuard.',
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () async {
+                    final success = await NavigationService.openInGoogleMaps(
+                      latitude: currentMember.latitude!,
+                      longitude: currentMember.longitude!,
+                    );
+                    if (context.mounted && !success)
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Unable to open Google Maps. Please try again.',
+                          ),
+                        ),
+                      );
+                  },
+                  icon: const Icon(Icons.open_in_new_rounded),
+                  label: const Text('Open in Google Maps'),
+                ),
+              ),
+              const SizedBox(height: 12),
             ],
-          ),
-        ],
+            if (canGetDirections) ...[
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () async {
+                    final success =
+                        await NavigationService.launchTurnByTurnNavigation(
+                          latitude: currentMember.latitude!,
+                          longitude: currentMember.longitude!,
+                          label: currentMember.name,
+                        );
+                    if (context.mounted && !success) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Unable to launch navigation maps app.',
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                  icon: const Icon(
+                    Icons.directions_car_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                  label: Text(
+                    'Get directions',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 2,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+
+            // 2x2 Grid of Status Cards
+            GridView.count(
+              crossAxisCount: 2,
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              mainAxisSpacing: 12,
+              crossAxisSpacing: 12,
+              childAspectRatio: 1.5,
+              children: [
+                // 1. Speed & Movement Activity Card
+                _buildDetailCard(
+                  icon: activity.icon,
+                  iconColor: activity.color,
+                  bgColor: activity.bgColor,
+                  title: 'Speed & Motion',
+                  value: '${currentMember.speedMph.toStringAsFixed(1)} mph',
+                  subtitle: '${activity.emoji} ${activity.label}',
+                ),
+
+                // 2. Battery Status Badge Card
+                _buildBatteryCard(
+                  batLevel: currentMember.batteryLevel,
+                  isCharging: currentMember.isCharging,
+                  batColor: batColor,
+                  batIcon: batIcon,
+                ),
+
+                // 3. Location Address Card
+                _buildDetailCard(
+                  icon: Icons.location_on_rounded,
+                  iconColor: AppColors.primary,
+                  bgColor: AppColors.primaryLight,
+                  title: 'Address',
+                  value: currentMember.address,
+                  subtitle: hasLocation
+                      ? 'Lat: ${currentMember.latitude!.toStringAsFixed(4)} • Lng: ${currentMember.longitude!.toStringAsFixed(4)}'
+                      : 'Coordinates unavailable',
+                ),
+
+                // 4. Timestamp Card
+                _buildDetailCard(
+                  icon: Icons.access_time_filled_rounded,
+                  iconColor: const Color(0xFF8B5CF6),
+                  bgColor: const Color(0xFFF3E8FF),
+                  title: 'Timestamp',
+                  value: _getRelativeTime(currentMember.lastSeen),
+                  subtitle: DateFormat(
+                    'h:mm:ss a',
+                  ).format(currentMember.lastSeen),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 
   Widget _buildDetailCard({
     required IconData icon,
@@ -289,7 +399,11 @@ class MemberDetailSheet extends ConsumerWidget {
               const SizedBox(width: 6),
               Text(
                 title,
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.shade700,
+                ),
               ),
             ],
           ),
@@ -297,13 +411,21 @@ class MemberDetailSheet extends ConsumerWidget {
             value,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              color: AppColors.textPrimary,
+            ),
           ),
           Text(
             subtitle,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Colors.grey.shade600),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade600,
+            ),
           ),
         ],
       ),
@@ -333,7 +455,11 @@ class MemberDetailSheet extends ConsumerWidget {
               const SizedBox(width: 6),
               Text(
                 'Battery Status',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.grey.shade700,
+                ),
               ),
             ],
           ),
@@ -342,7 +468,11 @@ class MemberDetailSheet extends ConsumerWidget {
             children: [
               Text(
                 BatteryHelper.label(batLevel),
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: batColor),
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: batColor,
+                ),
               ),
               const SizedBox(width: 6),
               Container(
@@ -352,8 +482,16 @@ class MemberDetailSheet extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(6),
                 ),
                 child: Text(
-                  batLevel < 0 ? 'Unavailable' : isCharging ? 'Charging ⚡' : (batLevel < 20 ? 'Low 🪫' : 'Good 🔋'),
-                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.w900, color: batColor),
+                  batLevel < 0
+                      ? 'Unavailable'
+                      : isCharging
+                      ? 'Charging ⚡'
+                      : (batLevel < 20 ? 'Low 🪫' : 'Good 🔋'),
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w900,
+                    color: batColor,
+                  ),
                 ),
               ),
             ],

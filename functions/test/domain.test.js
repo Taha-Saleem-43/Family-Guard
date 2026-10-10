@@ -28,3 +28,15 @@ test('circle names are bounded and trimmed', () => {
   assert.equal(circleName('  My family  '), 'My family');
   for (const name of ['', 'x', 'x'.repeat(61), null]) assert.throws(() => circleName(name));
 });
+
+const { validateFix } = require('../features/locations');
+test('accuracy is optional for old clients and bounded for new clients', () => {
+  const now = Date.now();
+  const fix = { id: 'a'.repeat(64), capturedAt: now, latitude: 33, longitude: 73,
+    speedMph: 0, movementActivity: 'stationary', batteryLevel: 80, isCharging: false };
+  assert.equal(validateFix(fix, now).accuracyMeters, undefined);
+  assert.equal(validateFix({ ...fix, accuracyMeters: 12.5 }, now).accuracyMeters, 12.5);
+  for (const accuracyMeters of [null, -1, 101, NaN, Infinity, '10']) {
+    assert.throws(() => validateFix({ ...fix, accuracyMeters }, now), { code: 'invalid-argument' });
+  }
+});

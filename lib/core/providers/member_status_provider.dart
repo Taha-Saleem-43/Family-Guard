@@ -207,6 +207,7 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
         capturedAt: DateTime.parse(location.timestamp),
         lat: location.coords.latitude,
         lng: location.coords.longitude,
+        accuracyMeters: location.coords.accuracy,
         speedMph: speedMph,
         activity: activity,
       );
@@ -240,6 +241,7 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
         capturedAt: DateTime.parse(location.timestamp),
         lat: location.coords.latitude,
         lng: location.coords.longitude,
+        accuracyMeters: location.coords.accuracy,
         speedMph: speedMph,
         activity: activity,
       );
@@ -261,6 +263,7 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
     required DateTime capturedAt,
     required double lat,
     required double lng,
+    required double accuracyMeters,
     required double speedMph,
     required MovementActivity activity,
   }) {
@@ -275,6 +278,7 @@ class MemberStateNotifier extends StateNotifier<List<Member>> {
         selfMember = member.copyWith(
           latitude: lat,
           longitude: lng,
+          accuracyMeters: accuracyMeters,
           speedMph: speedMph,
           movementActivity: activity,
           lastSeen: capturedAt,

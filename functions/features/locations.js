@@ -12,12 +12,15 @@ function validateFix(value, now) {
     || !Number.isFinite(value.speedMph) || value.speedMph < 0 || value.speedMph > 1000
     || !['stationary', 'walking', 'driving'].includes(value.movementActivity)
     || !Number.isInteger(value.batteryLevel) || value.batteryLevel < -1 || value.batteryLevel > 100
-    || typeof value.isCharging !== 'boolean') {
+    || typeof value.isCharging !== 'boolean'
+    || (value.accuracyMeters !== undefined && (!Number.isFinite(value.accuracyMeters)
+      || value.accuracyMeters < 0 || value.accuracyMeters > 100))) {
     throw new HttpsError('invalid-argument', 'Invalid or expired location fix.');
   }
   return { id: value.id, capturedAt: value.capturedAt, latitude: value.latitude,
     longitude: value.longitude, speedMph: value.speedMph, movementActivity: value.movementActivity,
-    batteryLevel: value.batteryLevel, isCharging: value.isCharging };
+    batteryLevel: value.batteryLevel, isCharging: value.isCharging,
+    ...(value.accuracyMeters !== undefined ? { accuracyMeters: value.accuracyMeters } : {}) };
 }
 
 function createLocationHandlers(db) {
@@ -81,7 +84,7 @@ function createLocationHandlers(db) {
         locationIngestCount: count + points.length };
       if (newest) {
         const { id, capturedAt, ...fields } = newest;
-        Object.assign(profileUpdate, { ...fields, lastSeen: new Date(capturedAt).toISOString(),
+        Object.assign(profileUpdate, { ...fields, accuracyMeters: newest.accuracyMeters ?? null, lastSeen: new Date(capturedAt).toISOString(),
           lastLocationCapturedAt: Timestamp.fromMillis(capturedAt), lastLocationPointId: id });
       }
       tx.update(profileRef, profileUpdate);

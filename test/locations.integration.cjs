@@ -83,3 +83,13 @@ test('new sign-ins reject an old sharing session even with a fresh fix', async (
     data: { expectedUid: uid, circleId: uid, sharingStartedAt: (authTime - 60) * 1000, fixes: [fix('8')] } }), { code: 'failed-precondition' });
   assert.equal((await db.collection(`locationHistory/${uid}/points`).get()).size, 0);
 });
+
+test('accuracy survives ingestion and later legacy fixes clear old uncertainty', async () => {
+  const uid = 'location-accuracy'; await setup(uid);
+  const precise = { ...fix('a', 10000), accuracyMeters: 12.5 };
+  await upload(uid, [precise]);
+  assert.equal((await db.doc('users/' + uid).get()).data().accuracyMeters, 12.5);
+  assert.equal((await db.doc('locationHistory/' + uid + '/points/' + precise.id).get()).data().accuracyMeters, 12.5);
+  await upload(uid, [fix('b', 1000)]);
+  assert.equal((await db.doc('users/' + uid).get()).data().accuracyMeters, null);
+});
