@@ -282,28 +282,39 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     icon: const Icon(Icons.my_location_rounded),
                   ),
                 ),
-                const Spacer(),
-                Material(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  child: TextButton(
-                    onPressed: () async {
-                      await launchUrl(
-                        Uri.parse('https://www.openstreetmap.org/copyright'),
-                        mode: LaunchMode.externalApplication,
-                      );
-                    },
-                    child: const Text(
-                      '© OpenStreetMap',
-                      style: TextStyle(fontSize: 11),
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
+          // Provider credit stays visible without resembling a map action.
+          Positioned(
+            right: 6,
+            bottom: isParent
+                ? (constraints.maxHeight * 0.42).clamp(140.0, 260.0) + 2
+                : 2,
+            child: Material(
+              color: Colors.white.withValues(alpha: 0.9),
+              child: InkWell(
+                onTap: () async {
+                  await launchUrl(
+                    Uri.parse('https://www.openstreetmap.org/copyright'),
+                    mode: LaunchMode.externalApplication,
+                  );
+                },
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+                  child: Text(
+                    '© OpenStreetMap contributors',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: AppColors.textSecondary,
+                      decoration: TextDecoration.underline,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
 
-          // ── Bottom Member Cards Sheet (Parent View) ──────────────────
           if (isParent)
             Positioned(
               left: 0,

@@ -254,10 +254,16 @@ class MemberDetailSheet extends ConsumerWidget {
                 width: double.infinity,
                 child: FilledButton.icon(
                   onPressed: () async {
-                    final success = await NavigationService.openInGoogleMaps(
-                      latitude: currentMember.latitude!,
-                      longitude: currentMember.longitude!,
-                    );
+                    final success = canGetDirections
+                        ? await NavigationService.launchTurnByTurnNavigation(
+                            latitude: currentMember.latitude!,
+                            longitude: currentMember.longitude!,
+                            label: currentMember.name,
+                          )
+                        : await NavigationService.openInGoogleMaps(
+                            latitude: currentMember.latitude!,
+                            longitude: currentMember.longitude!,
+                          );
                     if (context.mounted && !success) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
@@ -268,59 +274,20 @@ class MemberDetailSheet extends ConsumerWidget {
                       );
                     }
                   },
-                  icon: const Icon(Icons.open_in_new_rounded),
-                  label: const Text('Open in Google Maps'),
+                  icon: Icon(
+                    canGetDirections
+                        ? Icons.directions_rounded
+                        : Icons.open_in_new_rounded,
+                  ),
+                  label: Text(
+                    canGetDirections
+                        ? 'Directions in Google Maps'
+                        : 'Open in Google Maps',
+                  ),
                 ),
               ),
               const SizedBox(height: 12),
             ],
-            if (canGetDirections) ...[
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  onPressed: () async {
-                    final success =
-                        await NavigationService.launchTurnByTurnNavigation(
-                          latitude: currentMember.latitude!,
-                          longitude: currentMember.longitude!,
-                          label: currentMember.name,
-                        );
-                    if (context.mounted && !success) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text(
-                            'Unable to launch navigation maps app.',
-                          ),
-                        ),
-                      );
-                    }
-                  },
-                  icon: const Icon(
-                    Icons.directions_car_rounded,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                  label: Text(
-                    'Get directions',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                    ),
-                  ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 2,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-
             // 2x2 Grid of Status Cards
             GridView.count(
               crossAxisCount: 2,

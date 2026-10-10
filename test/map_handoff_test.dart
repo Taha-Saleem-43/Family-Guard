@@ -75,8 +75,8 @@ void main() {
     'stale positions keep Maps available with an explicit warning and accuracy',
     (tester) async {
       await show(tester, member(stale: true), UserRole.parent);
-      expect(find.text('Open in Google Maps'), findsOneWidget);
-      expect(find.text('Get directions'), findsOneWidget);
+      expect(find.text('Open in Google Maps'), findsNothing);
+      expect(find.text('Directions in Google Maps'), findsOneWidget);
       expect(find.textContaining('Location may be outdated'), findsOneWidget);
       expect(find.text('Reported accuracy: ±18 m'), findsOneWidget);
       expect(find.textContaining('Activity unknown'), findsOneWidget);
@@ -86,19 +86,19 @@ void main() {
   );
   testWidgets('parents can open another parent location', (tester) async {
     await show(tester, member(role: UserRole.parent), UserRole.parent);
-    expect(find.text('Open in Google Maps'), findsOneWidget);
-    expect(find.text('Get directions'), findsOneWidget);
+    expect(find.text('Open in Google Maps'), findsNothing);
+    expect(find.text('Directions in Google Maps'), findsOneWidget);
   });
   testWidgets(
     'children can open self but cannot hand off another member location',
     (tester) async {
       await show(tester, member(id: 'm_self'), UserRole.child);
       expect(find.text('Open in Google Maps'), findsOneWidget);
-      expect(find.text('Get directions'), findsNothing);
+      expect(find.text('Directions in Google Maps'), findsNothing);
       await tester.pumpWidget(const SizedBox());
       await show(tester, member(), UserRole.child);
       expect(find.text('Open in Google Maps'), findsNothing);
-      expect(find.text('Get directions'), findsNothing);
+      expect(find.text('Directions in Google Maps'), findsNothing);
     },
   );
   testWidgets(
@@ -106,7 +106,7 @@ void main() {
     (tester) async {
       await show(tester, member(located: false), UserRole.parent);
       expect(find.text('Open in Google Maps'), findsNothing);
-      expect(find.text('Get directions'), findsNothing);
+      expect(find.text('Directions in Google Maps'), findsNothing);
       expect(find.text('Coordinates unavailable'), findsOneWidget);
       expect(find.text('Location not available yet.'), findsOneWidget);
     },

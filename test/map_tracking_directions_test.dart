@@ -105,6 +105,11 @@ void main() {
         // 1. Verify OpenStreetMap FlutterMap widget is present
         expect(find.byType(FlutterMap), findsOneWidget);
         expect(find.byType(TileLayer), findsOneWidget);
+        expect(find.text('© OpenStreetMap contributors'), findsOneWidget);
+        expect(
+          find.widgetWithText(TextButton, '© OpenStreetMap contributors'),
+          findsNothing,
+        );
         final camera = MapCamera.of(
           tester.element(find.byType(MarkerLayer).last),
         );
@@ -247,8 +252,9 @@ void main() {
         expect(find.text('Child'), findsOneWidget);
 
         // Verify "Get Directions to Child 🚗" button exists for Parent viewing Child
-        final directionsButton = find.text('Get directions');
+        final directionsButton = find.text('Directions in Google Maps');
         expect(directionsButton, findsOneWidget);
+        expect(find.text('Open in Google Maps'), findsNothing);
 
         // Tap Directions Button
         await tester.tap(directionsButton);
@@ -284,7 +290,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 300));
 
         // Verify "Get Directions" button is hidden when viewer is a Child
-        expect(find.text('Get directions'), findsNothing);
+        expect(find.text('Directions in Google Maps'), findsNothing);
       },
     );
 
@@ -314,7 +320,7 @@ void main() {
         expect(find.text('Parent'), findsOneWidget);
 
         // Verify "Get Directions" button is hidden for Parent himself
-        expect(find.textContaining('Get Directions'), findsNothing);
+        expect(find.text('Directions in Google Maps'), findsNothing);
       },
     );
 
@@ -347,7 +353,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 300));
 
         // Verify "Get Directions" button is hidden when lat/lng are null
-        expect(find.textContaining('Get Directions'), findsNothing);
+        expect(find.text('Directions in Google Maps'), findsNothing);
       },
     );
   });
