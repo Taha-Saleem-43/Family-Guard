@@ -6,6 +6,7 @@
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
   "workers_dev": true,
   "preview_urls": false,
+  "placement": { "mode": "smart" },
   "vars": {
     "FIREBASE_PROJECT_ID": "familyguard-v2-app",
     "FIREBASE_PROJECT_NUMBER": "160141197240",
