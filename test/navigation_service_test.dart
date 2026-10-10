@@ -44,31 +44,28 @@ void main() {
     },
   );
   for (final throws in [false, true]) {
-    test(
-      'browser fallback handles false and exceptions: ' + throws.toString(),
-      () async {
-        final modes = <LaunchMode>[];
-        expect(
-          await NavigationService.openInGoogleMaps(
-            latitude: 33,
-            longitude: 73,
-            launcher: (url, mode) async {
-              modes.add(mode);
-              if (mode == LaunchMode.externalApplication) {
-                if (throws) throw StateError('unavailable');
-                return false;
-              }
-              return true;
-            },
-          ),
-          true,
-        );
-        expect(modes, [
-          LaunchMode.externalApplication,
-          LaunchMode.platformDefault,
-        ]);
-      },
-    );
+    test('browser fallback handles false and exceptions: $throws', () async {
+      final modes = <LaunchMode>[];
+      expect(
+        await NavigationService.openInGoogleMaps(
+          latitude: 33,
+          longitude: 73,
+          launcher: (url, mode) async {
+            modes.add(mode);
+            if (mode == LaunchMode.externalApplication) {
+              if (throws) throw StateError('unavailable');
+              return false;
+            }
+            return true;
+          },
+        ),
+        true,
+      );
+      expect(modes, [
+        LaunchMode.externalApplication,
+        LaunchMode.platformDefault,
+      ]);
+    });
   }
   test('both launch failures return false', () async {
     expect(

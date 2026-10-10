@@ -254,7 +254,7 @@ class MemberDetailSheet extends ConsumerWidget {
                       latitude: currentMember.latitude!,
                       longitude: currentMember.longitude!,
                     );
-                    if (context.mounted && !success)
+                    if (context.mounted && !success) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text(
@@ -262,6 +262,7 @@ class MemberDetailSheet extends ConsumerWidget {
                           ),
                         ),
                       );
+                    }
                   },
                   icon: const Icon(Icons.open_in_new_rounded),
                   label: const Text('Open in Google Maps'),
