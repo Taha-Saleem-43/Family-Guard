@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/presentation/screen_header.dart';
+import '../../../core/presentation/feedback_panel.dart';
 import '../../sos/models/sos_alert.dart';
 import '../../sos/providers/sos_provider.dart';
 import '../providers/place_events_provider.dart';
@@ -17,16 +19,25 @@ class AlertsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: AppBar(title: const Text('Activity Alerts')),
+      appBar: const ScreenHeader(
+        title: 'Activity',
+        subtitle: 'SOS alerts and confirmed place updates.',
+      ),
       body: sosHistoryAsync.when(
         skipLoadingOnRefresh: false,
         skipLoadingOnReload: false,
         loading: () => const Center(
           child: CircularProgressIndicator(color: AppColors.primary),
         ),
-        error: (err, stack) => _buildEmptyState(
-          title: 'Unable to Load Alerts',
-          subtitle: err.toString(),
+        error: (err, stack) => FeedbackPanel(
+          icon: Icons.cloud_off_rounded,
+          title: 'Activity is unavailable',
+          message: 'Check your connection and try again.',
+          actionLabel: 'Try again',
+          onAction: () {
+            ref.invalidate(circleSosHistoryProvider);
+            ref.invalidate(circlePlaceEventsProvider);
+          },
         ),
         data: (alerts) {
           final places =
@@ -43,14 +54,17 @@ class AlertsScreen extends ConsumerWidget {
             return const Center(child: CircularProgressIndicator());
           }
           if (items.isEmpty && placeEventsAsync.hasError) {
-            return _buildEmptyState(
+            return FeedbackPanel(
+              icon: Icons.cloud_off_rounded,
               title: 'Unable to Load Place Activity',
-              subtitle: 'Please try again when connected.',
+              message: 'Check your connection and try again.',
+              actionLabel: 'Try again',
+              onAction: () => ref.invalidate(circlePlaceEventsProvider),
             );
           }
           if (items.isEmpty) {
             return _buildEmptyState(
-              title: 'No Alerts Yet',
+              title: 'No activity yet',
               subtitle:
                   'SOS emergencies and confirmed place arrivals and departures will appear here.',
             );
@@ -59,9 +73,20 @@ class AlertsScreen extends ConsumerWidget {
           return Column(
             children: [
               if (placeEventsAsync.hasError)
-                const Padding(
-                  padding: EdgeInsets.all(12),
-                  child: Text('Place activity is temporarily unavailable.'),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Wrap(
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 8,
+                    children: [
+                      const Text('Place activity is temporarily unavailable.'),
+                      TextButton(
+                        onPressed: () =>
+                            ref.invalidate(circlePlaceEventsProvider),
+                        child: const Text('Try again'),
+                      ),
+                    ],
+                  ),
                 ),
               Expanded(
                 child: ListView.separated(
@@ -100,39 +125,10 @@ class AlertsScreen extends ConsumerWidget {
   }
 
   Widget _buildEmptyState({required String title, required String subtitle}) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.notifications_none_rounded,
-              size: 64,
-              color: AppColors.textMuted,
-            ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 13,
-                color: AppColors.textSecondary,
-                height: 1.4,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return FeedbackPanel(
+      icon: Icons.notifications_none_rounded,
+      title: title,
+      message: subtitle,
     );
   }
 

@@ -105,7 +105,7 @@ void main() {
       expect(find.textContaining('Driving'), findsWidgets);
 
       // 4. Verify Live Circle Members bottom sheet renders for parent
-      expect(find.text('Live Circle Members'), findsOneWidget);
+      expect(find.text('2 members'), findsOneWidget);
     });
 
     testWidgets('MapScreen renders ONLY child own pin and hides other member pins/sheet for Child user', (WidgetTester tester) async {
@@ -132,10 +132,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
 
       // 1. Verify top child sharing location banner renders
-      expect(find.textContaining('Sharing location as Child Member with Circle'), findsOneWidget);
+      expect(find.textContaining('Your location is not available yet'), findsOneWidget);
 
       // 2. Verify Live Circle Members bottom sheet is HIDDEN for child
-      expect(find.text('Live Circle Members'), findsNothing);
+      expect(find.text('2 members'), findsNothing);
+      expect(find.textContaining('All ('), findsNothing);
 
       // 3. Verify Parent member name pin is NOT displayed on Child map
       expect(find.text('Parent User'), findsNothing);

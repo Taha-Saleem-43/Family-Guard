@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tracelet/tracelet.dart' as tl;
 import 'core/providers/app_state_provider.dart';
 import 'core/presentation/local_privacy_gate.dart';
+import 'core/presentation/feedback_panel.dart';
 import 'core/services/firestore_privacy_service.dart';
 import 'core/services/location_service.dart';
 import 'core/services/location_sync_service.dart';
@@ -267,20 +268,24 @@ class _FamilyGuardAppState extends ConsumerState<FamilyGuardApp>
       theme: AppTheme.light(),
       home: _restoring
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-          : _restoreError != null
+          : _restoreError != null || appState.accountUnavailable
           ? Scaffold(
-              body: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
+              body: SafeArea(
+                child: FeedbackPanel(
+                  icon: _restoreError != null
+                      ? Icons.cloud_off_rounded
+                      : Icons.lock_outline_rounded,
+                  title: _restoreError != null
+                      ? 'Let’s reconnect'
+                      : 'Your circle is unavailable',
+                  message:
+                      _restoreError ??
+                      'Sharing is paused. Verify your account to continue.',
+                  actionLabel: 'Retry',
+                  onAction: _restore,
+                  footer: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(_restoreError!, textAlign: TextAlign.center),
-                      const SizedBox(height: 16),
-                      FilledButton(
-                        onPressed: _restore,
-                        child: const Text('Retry'),
-                      ),
                       TextButton(
                         onPressed: _signOut,
                         child: const Text('Sign out'),
@@ -288,29 +293,6 @@ class _FamilyGuardAppState extends ConsumerState<FamilyGuardApp>
                       const AccountDeletionControl(),
                     ],
                   ),
-                ),
-              ),
-            )
-          : appState.accountUnavailable
-          ? Scaffold(
-              body: Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('Your account or circle is unavailable.'),
-                    const Text(
-                      'Sharing is paused. Please verify your account again.',
-                    ),
-                    FilledButton(
-                      onPressed: _restore,
-                      child: const Text('Retry'),
-                    ),
-                    TextButton(
-                      onPressed: _signOut,
-                      child: const Text('Sign out'),
-                    ),
-                    const AccountDeletionControl(),
-                  ],
                 ),
               ),
             )

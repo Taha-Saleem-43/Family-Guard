@@ -4,7 +4,7 @@ Family Guard is a Flutter/Firebase app for consent-based family location sharing
 
 ## Engineering status
 
-This repository contains the secured engineering baseline. Production deployment, owner signing, signed AAB/device acceptance, measured battery/capacity testing and Play submission remain release gates. UI refinement follows this baseline. See [the release runbook](docs/RELEASE_RUNBOOK.md) for configuration, deployment order and acceptance checks.
+This repository contains the secured engineering baseline and [UI refinements](docs/UI_REFINEMENTS.md) for navigation, map status, role-specific controls and recovery screens. Production deployment, owner signing, signed AAB/device acceptance, measured battery/capacity testing and Play submission remain release gates. See [the release runbook](docs/RELEASE_RUNBOOK.md) for configuration, deployment order and acceptance checks.
 
 The app does not guarantee continuous location availability or instant emergency notification. Android permissions, connectivity, notification settings and device restrictions affect delivery and freshness. Unknown and stale member status is displayed explicitly.
 

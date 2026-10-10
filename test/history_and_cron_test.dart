@@ -181,7 +181,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Verify Title
-      expect(find.text('Location History'), findsOneWidget);
+      expect(find.text('History'), findsOneWidget);
 
       // Verify Timeframe Tab labels
       expect(find.text('Today'), findsOneWidget);
