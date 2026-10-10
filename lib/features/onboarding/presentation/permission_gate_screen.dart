@@ -77,10 +77,20 @@ class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen>
   }
 
   Future<void> _checkForegroundAfterSettings() async {
-    if (!mounted || ref.read(appStateProvider).userId != _initialUid) return;
+    if (!mounted ||
+        ref.read(appStateProvider).userId != _initialUid ||
+        !_awaitingSettings ||
+        _step != _PermStep.foreground) {
+      return;
+    }
     try {
       final status = await _service.foregroundLocationStatus();
-      if (!mounted || ref.read(appStateProvider).userId != _initialUid) return;
+      if (!mounted ||
+          ref.read(appStateProvider).userId != _initialUid ||
+          !_awaitingSettings ||
+          _step != _PermStep.foreground) {
+        return;
+      }
       if (status.isGranted) {
         setState(() {
           _awaitingSettings = false;
