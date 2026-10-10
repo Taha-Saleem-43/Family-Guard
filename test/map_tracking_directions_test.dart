@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:family_guard/core/models/member.dart';
@@ -41,6 +42,7 @@ void main() {
     Member(
       id: 'm_child_1',
       name: 'Child Member',
+      accuracyMeters: 18,
       avatar: '👧',
       role: UserRole.child,
       address: 'School Location',
@@ -103,6 +105,31 @@ void main() {
         // 1. Verify OpenStreetMap FlutterMap widget is present
         expect(find.byType(FlutterMap), findsOneWidget);
         expect(find.byType(TileLayer), findsOneWidget);
+        final camera = MapCamera.of(
+          tester.element(find.byType(MarkerLayer).last),
+        );
+        final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+        final avatars = find.descendant(
+          of: find.byType(FlutterMap),
+          matching: find.byType(CircleAvatar),
+        );
+        for (var index = 0; index < testParentAndChild.length; index++) {
+          final member = testParentAndChild[index];
+          final point = camera.latLngToScreenPoint(
+            LatLng(member.latitude!, member.longitude!),
+          );
+          expect(
+            (tester.getCenter(avatars.at(index)) -
+                    (mapOrigin + Offset(point.x, point.y)))
+                .distance,
+            lessThan(1),
+          );
+        }
+        final circles = tester
+            .widgetList<CircleLayer>(find.byType(CircleLayer))
+            .expand((layer) => layer.circles);
+        expect(circles.single.radius, 18);
+        expect(circles.single.useRadiusInMeter, true);
 
         // 2. Verify Floating Action Button for child navigation is removed from map
         expect(find.textContaining('Navigate to'), findsNothing);

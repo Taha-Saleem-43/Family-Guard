@@ -151,6 +151,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         point: LatLng(member.latitude!, member.longitude!),
                         width: 140,
                         height: 85,
+                        // Anchor the avatar center, not the label beneath it.
+                        alignment: Marker.computePixelAlignment(
+                          width: 140,
+                          height: 85,
+                          left: 70,
+                          top:
+                              (_selectedMemberId == member.id ? 20 : 16) +
+                              3 +
+                              (member.isSosActive ? 4 : 3),
+                        ),
                         child: _buildMapPin(
                           member,
                           isSelected: _selectedMemberId == member.id,
