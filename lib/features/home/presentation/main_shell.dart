@@ -126,6 +126,8 @@ class _MainShellScreenState extends ConsumerState<MainShellScreen>
               Expanded(child: buildBody()),
               BottomNav(
                 activeTab: appState.activeTab,
+                onSos: () =>
+                    ref.read(sosComposerProvider.notifier).state = true,
                 onTabChanged: (tab) {
                   ref.read(appStateProvider.notifier).setActiveTab(tab);
                 },

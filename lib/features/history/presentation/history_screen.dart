@@ -6,6 +6,7 @@ import '../../../core/models/history_timeline_item.dart';
 import '../../../core/providers/app_state_provider.dart';
 import '../../../core/providers/member_status_provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/presentation/screen_header.dart';
 import '../providers/history_provider.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
@@ -49,9 +50,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: AppBar(
-        title: const Text('Location History'),
-      ),
+      appBar: const ScreenHeader(title: 'History', subtitle: 'Explore captured locations and past journeys.'),
       body: RefreshIndicator(
         onRefresh: () async {
           try {

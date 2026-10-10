@@ -6,6 +6,7 @@ import '../../../core/models/movement_activity.dart';
 import '../../../core/providers/app_state_provider.dart';
 import '../../../core/providers/member_status_provider.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/presentation/screen_header.dart';
 import '../../auth/providers/auth_providers.dart';
 import '../../map/presentation/widgets/member_detail_sheet.dart';
 import 'permission_status_card.dart';
@@ -50,7 +51,10 @@ class SettingsScreen extends ConsumerWidget {
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: AppBar(title: const Text('Settings & Circle')),
+      appBar: const ScreenHeader(
+        title: 'Settings',
+        subtitle: 'Your circle, sharing and account preferences.',
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -90,7 +94,7 @@ class SettingsScreen extends ConsumerWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              'Active Role: ${isParent ? "Parent / Guardian" : "Child Member"}',
+                              isParent ? 'Parent / Guardian' : 'Child member',
                               style: const TextStyle(
                                 fontSize: 13,
                                 color: AppColors.textSecondary,
@@ -109,25 +113,28 @@ class SettingsScreen extends ConsumerWidget {
           const SizedBox(height: 16),
 
           // Circle Members
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            alignment: WrapAlignment.spaceBetween,
+            spacing: 12,
+            runSpacing: 8,
             children: [
-              const Text(
-                'Circle Members',
-                style: TextStyle(
+              Text(
+                isParent ? 'Circle members' : 'Your profile',
+                style: const TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w900,
                   color: AppColors.textPrimary,
                 ),
               ),
-              Text(
-                '${members.length} Members',
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textMuted,
+              if (isParent)
+                Text(
+                  '${members.length} ${members.length == 1 ? 'member' : 'members'}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textMuted,
+                  ),
                 ),
-              ),
             ],
           ),
           const SizedBox(height: 8),

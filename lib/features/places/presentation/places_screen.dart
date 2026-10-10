@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/models/place.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/providers/app_state_provider.dart';
+import '../../../core/presentation/screen_header.dart';
+import '../../../core/presentation/feedback_panel.dart';
 import '../providers/places_provider.dart';
 import 'widgets/add_edit_place_dialog.dart';
 
@@ -12,17 +15,29 @@ class PlacesScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final placesAsync = ref.watch(circlePlacesStreamProvider);
     final selectedFilter = ref.watch(selectedPlaceCategoryFilterProvider);
+    final isParent =
+        ref.watch(appStateProvider.select((state) => state.role)) ==
+        UserRole.parent;
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: AppBar(
-        title: const Text('Saved Places'),
+      appBar: ScreenHeader(
+        title: 'Places',
+        subtitle: isParent
+            ? 'Manage familiar places and arrival alerts.'
+            : 'Places your family has saved for your circle.',
       ),
       body: placesAsync.when(
         loading: () => const Center(
           child: CircularProgressIndicator(color: AppColors.primary),
         ),
-        error: (err, stack) => _buildErrorState(err.toString()),
+        error: (err, stack) => FeedbackPanel(
+          icon: Icons.cloud_off_rounded,
+          title: 'Places are unavailable',
+          message: 'Check your connection and try again.',
+          actionLabel: 'Try again',
+          onAction: () => ref.invalidate(circlePlacesStreamProvider),
+        ),
         data: (allPlaces) {
           final places = selectedFilter == null
               ? allPlaces
@@ -31,16 +46,49 @@ class PlacesScreen extends ConsumerWidget {
           return Column(
             children: [
               // Top Category Filters Header
-              _buildCategoryFilterHeader(context, ref, allPlaces, selectedFilter),
+              _buildCategoryFilterHeader(
+                context,
+                ref,
+                allPlaces,
+                selectedFilter,
+              ),
 
               // Main List Content / Empty State
               Expanded(
                 child: places.isEmpty
-                    ? _buildEmptyState(hasPlacesInCircle: allPlaces.isNotEmpty)
+                    ? FeedbackPanel(
+                        icon: Icons.place_outlined,
+                        title: allPlaces.isEmpty
+                            ? 'Make familiar places easier to find'
+                            : 'No places in this category',
+                        message: allPlaces.isNotEmpty
+                            ? 'Try another category to see your saved places.'
+                            : isParent
+                            ? 'Save home, school or another familiar spot to set up arrival and departure alerts.'
+                            : 'A parent can add home, school and other places for your circle.',
+                        actionLabel: allPlaces.isNotEmpty
+                            ? 'Show all places'
+                            : isParent
+                            ? 'Add your first place'
+                            : null,
+                        onAction: allPlaces.isNotEmpty
+                            ? () =>
+                                  ref
+                                          .read(
+                                            selectedPlaceCategoryFilterProvider
+                                                .notifier,
+                                          )
+                                          .state =
+                                      null
+                            : isParent
+                            ? () => AddEditPlaceDialog.show(context)
+                            : null,
+                      )
                     : ListView.separated(
                         padding: const EdgeInsets.all(16),
                         itemCount: places.length,
-                        separatorBuilder: (context, index) => const SizedBox(height: 12),
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           final place = places[index];
                           return _buildPlaceCard(context, ref, place);
@@ -51,13 +99,18 @@ class PlacesScreen extends ConsumerWidget {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppColors.primary,
-        foregroundColor: Colors.white,
-        onPressed: () => AddEditPlaceDialog.show(context),
-        icon: const Icon(Icons.add_location_alt_rounded),
-        label: const Text('Add Place', style: TextStyle(fontWeight: FontWeight.w800)),
-      ),
+      floatingActionButton: !isParent
+          ? null
+          : FloatingActionButton.extended(
+              backgroundColor: AppColors.primary,
+              foregroundColor: Colors.white,
+              onPressed: () => AddEditPlaceDialog.show(context),
+              icon: const Icon(Icons.add_location_alt_rounded),
+              label: const Text(
+                'Add Place',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
     );
   }
 
@@ -82,9 +135,11 @@ class PlacesScreen extends ConsumerWidget {
           children: [
             _buildFilterChip(
               label: 'All (${countFor(null)})',
-              emoji: '🗺️',
+              icon: Icons.grid_view_rounded,
               isSelected: selectedFilter == null,
-              onTap: () => ref.read(selectedPlaceCategoryFilterProvider.notifier).state = null,
+              onTap: () =>
+                  ref.read(selectedPlaceCategoryFilterProvider.notifier).state =
+                      null,
             ),
             const SizedBox(width: 8),
             ...PlaceCategory.values.map((cat) {
@@ -93,9 +148,15 @@ class PlacesScreen extends ConsumerWidget {
                 padding: const EdgeInsets.only(right: 8),
                 child: _buildFilterChip(
                   label: '${cat.displayName} ($count)',
-                  emoji: cat.emoji,
+                  icon: cat.icon,
                   isSelected: selectedFilter == cat,
-                  onTap: () => ref.read(selectedPlaceCategoryFilterProvider.notifier).state = cat,
+                  onTap: () =>
+                      ref
+                              .read(
+                                selectedPlaceCategoryFilterProvider.notifier,
+                              )
+                              .state =
+                          cat,
                 ),
               );
             }),
@@ -107,7 +168,7 @@ class PlacesScreen extends ConsumerWidget {
 
   Widget _buildFilterChip({
     required String label,
-    required String emoji,
+    required IconData icon,
     required bool isSelected,
     required VoidCallback onTap,
   }) {
@@ -116,7 +177,11 @@ class PlacesScreen extends ConsumerWidget {
       label: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 12)),
+          Icon(
+            icon,
+            size: 16,
+            color: isSelected ? Colors.white : AppColors.textSecondary,
+          ),
           const SizedBox(width: 4),
           Text(
             label,
@@ -138,62 +203,10 @@ class PlacesScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildEmptyState({required bool hasPlacesInCircle}) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.place_outlined, size: 54, color: AppColors.primary),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              hasPlacesInCircle ? 'No Places in Category' : 'No Saved Places Yet',
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              hasPlacesInCircle
-                  ? 'No places match the selected category filter.'
-                  : 'Add places like Home, School, or Work to receive arrival and departure alerts for your Circle.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorState(String error) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline_rounded, size: 48, color: AppColors.sosRed),
-            const SizedBox(height: 12),
-            const Text(
-              'Failed to load saved places',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
-            ),
-            const SizedBox(height: 4),
-            Text(error, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildPlaceCard(BuildContext context, WidgetRef ref, Place place) {
+    final isParent =
+        ref.watch(appStateProvider.select((state) => state.role)) ==
+        UserRole.parent;
     final color = place.color;
     final icon = place.iconData;
     final controller = ref.read(placesControllerProvider);
@@ -230,122 +243,153 @@ class PlacesScreen extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Flexible(
-                          child: Text(
-                            place.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: color.withValues(alpha: 0.12),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            place.category.displayName,
-                            style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: color),
-                          ),
-                        ),
-                      ],
+                    Text(
+                      place.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${place.category.displayName} · ${place.radius.toInt()} m boundary',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                      ),
                     ),
                     const SizedBox(height: 3),
                     Text(
                       place.address,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ],
                 ),
               ),
 
-              // Radius Badge & Context Menu
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppColors.bg,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: AppColors.border),
-                ),
-                child: Text(
-                  '${place.radius.toInt()}m',
-                  style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppColors.textMuted),
-                ),
-              ),
-              PopupMenuButton<String>(
-                icon: const Icon(Icons.more_vert_rounded, color: AppColors.textMuted, size: 20),
-                onSelected: (action) {
-                  if (action == 'edit') {
-                    AddEditPlaceDialog.show(context, existingPlace: place);
-                  } else if (action == 'delete') {
-                    _confirmDelete(context, controller, place);
-                  }
-                },
-                itemBuilder: (context) => [
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: Row(
-                      children: [
-                        Icon(Icons.edit_outlined, size: 18, color: AppColors.textPrimary),
-                        SizedBox(width: 8),
-                        Text('Edit Place', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
-                      ],
-                    ),
+              if (isParent)
+                PopupMenuButton<String>(
+                  icon: const Icon(
+                    Icons.more_vert_rounded,
+                    color: AppColors.textMuted,
+                    size: 20,
                   ),
-                  const PopupMenuItem(
-                    value: 'delete',
-                    child: Row(
-                      children: [
-                        Icon(Icons.delete_outline_rounded, size: 18, color: AppColors.sosRed),
-                        SizedBox(width: 8),
-                        Text('Delete', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: AppColors.sosRed)),
-                      ],
+                  onSelected: (action) {
+                    if (action == 'edit') {
+                      AddEditPlaceDialog.show(context, existingPlace: place);
+                    } else if (action == 'delete') {
+                      _confirmDelete(context, controller, place);
+                    }
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 'edit',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.edit_outlined,
+                            size: 18,
+                            color: AppColors.textPrimary,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Edit Place',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
-              ),
+                    const PopupMenuItem(
+                      value: 'delete',
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.delete_outline_rounded,
+                            size: 18,
+                            color: AppColors.sosRed,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Delete',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              color: AppColors.sosRed,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
 
           const Divider(height: 20),
 
           // Notification Toggles Row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Wrap(
+            spacing: 12,
+            runSpacing: 8,
             children: [
               // Arrival Alert Toggle Chip
               InkWell(
-                onTap: () => controller.toggleArrivalNotification(place),
+                onTap: !isParent
+                    ? null
+                    : () => _updatePlace(
+                        context,
+                        () => controller.toggleArrivalNotification(place),
+                      ),
                 borderRadius: BorderRadius.circular(10),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 16,
+                  ),
                   decoration: BoxDecoration(
-                    color: place.notifyArrive ? AppColors.teal.withValues(alpha: 0.1) : AppColors.bg,
+                    color: place.notifyArrive
+                        ? AppColors.teal.withValues(alpha: 0.1)
+                        : AppColors.bg,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: place.notifyArrive ? AppColors.teal : AppColors.border,
+                      color: place.notifyArrive
+                          ? AppColors.teal
+                          : AppColors.border,
                     ),
                   ),
                   child: Row(
                     children: [
                       Icon(
-                        place.notifyArrive ? Icons.check_circle_rounded : Icons.circle_outlined,
+                        place.notifyArrive
+                            ? Icons.check_circle_rounded
+                            : Icons.circle_outlined,
                         size: 16,
-                        color: place.notifyArrive ? AppColors.teal : AppColors.textMuted,
+                        color: place.notifyArrive
+                            ? AppColors.teal
+                            : AppColors.textMuted,
                       ),
                       const SizedBox(width: 6),
-                      Text(
-                        'Arrival alerts',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: place.notifyArrive ? AppColors.teal : AppColors.textMuted,
+                      Expanded(
+                        child: Text(
+                          'Arrival alerts',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: place.notifyArrive
+                                ? AppColors.teal
+                                : AppColors.textMuted,
+                          ),
                         ),
                       ),
                     ],
@@ -355,31 +399,51 @@ class PlacesScreen extends ConsumerWidget {
 
               // Departure Alert Toggle Chip
               InkWell(
-                onTap: () => controller.toggleDepartureNotification(place),
+                onTap: !isParent
+                    ? null
+                    : () => _updatePlace(
+                        context,
+                        () => controller.toggleDepartureNotification(place),
+                      ),
                 borderRadius: BorderRadius.circular(10),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 16,
+                  ),
                   decoration: BoxDecoration(
-                    color: place.notifyLeave ? AppColors.teal.withValues(alpha: 0.1) : AppColors.bg,
+                    color: place.notifyLeave
+                        ? AppColors.teal.withValues(alpha: 0.1)
+                        : AppColors.bg,
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(
-                      color: place.notifyLeave ? AppColors.teal : AppColors.border,
+                      color: place.notifyLeave
+                          ? AppColors.teal
+                          : AppColors.border,
                     ),
                   ),
                   child: Row(
                     children: [
                       Icon(
-                        place.notifyLeave ? Icons.check_circle_rounded : Icons.circle_outlined,
+                        place.notifyLeave
+                            ? Icons.check_circle_rounded
+                            : Icons.circle_outlined,
                         size: 16,
-                        color: place.notifyLeave ? AppColors.teal : AppColors.textMuted,
+                        color: place.notifyLeave
+                            ? AppColors.teal
+                            : AppColors.textMuted,
                       ),
                       const SizedBox(width: 6),
-                      Text(
-                        'Departure alerts',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: place.notifyLeave ? AppColors.teal : AppColors.textMuted,
+                      Expanded(
+                        child: Text(
+                          'Departure alerts',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: place.notifyLeave
+                                ? AppColors.teal
+                                : AppColors.textMuted,
+                          ),
                         ),
                       ),
                     ],
@@ -388,27 +452,48 @@ class PlacesScreen extends ConsumerWidget {
               ),
             ],
           ),
+          if (!isParent)
+            const Padding(
+              padding: EdgeInsets.only(top: 12),
+              child: Text(
+                'Notification settings are managed by a parent.',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  void _confirmDelete(BuildContext context, PlacesController controller, Place place) {
+  void _confirmDelete(
+    BuildContext context,
+    PlacesController controller,
+    Place place,
+  ) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Delete Saved Place?'),
-        content: Text('Are you sure you want to remove "${place.name}" from your circle\'s saved places?'),
+        content: Text(
+          'Are you sure you want to remove "${place.name}" from your circle\'s saved places?',
+        ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.sosRed, foregroundColor: Colors.white),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.sosRed,
+              foregroundColor: Colors.white,
+            ),
             onPressed: () async {
-              Navigator.pop(context);
-              await controller.deletePlace(place.id);
+              Navigator.pop(dialogContext);
+              final removed = await _updatePlace(
+                context,
+                () => controller.deletePlace(place.id),
+              );
+              if (!removed) return;
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -423,5 +508,26 @@ class PlacesScreen extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  Future<bool> _updatePlace(
+    BuildContext context,
+    Future<void> Function() update,
+  ) async {
+    try {
+      await update();
+      return true;
+    } catch (_) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not update this place. Check your connection and try again.',
+            ),
+          ),
+        );
+      }
+      return false;
+    }
   }
 }
