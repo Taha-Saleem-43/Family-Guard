@@ -1,0 +1,11 @@
+{
+  "private": true,
+  "name": "family-guard-workers",
+  "scripts": {
+    "test": "node ../scripts/run-node-tests.cjs test/security.test.cjs test/http.test.cjs && node test/runtime.cjs",
+    "build": "wrangler deploy --dry-run --config wrangler.jsonc --outdir ../build/workers"
+  },
+  "devDependencies": {
+    "wrangler": "4.149.0"
+  }
+}

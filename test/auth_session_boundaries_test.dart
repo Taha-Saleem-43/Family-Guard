@@ -80,8 +80,12 @@ class TestFunctions implements FirebaseFunctions {
   final Completer<Map<String, dynamic>>? pending;
   TestFunctions([this.pending]);
   @override
-  HttpsCallable httpsCallable(String name, {HttpsCallableOptions? options}) =>
-      TestCallable(pending!);
+  HttpsCallable httpsCallableFromUri(Uri uri, {HttpsCallableOptions? options}) {
+    expect(uri.scheme, 'https');
+    expect(uri.host, 'family-guard-api.tahasaleem981.workers.dev');
+    expect(uri.path, startsWith('/'));
+    return TestCallable(pending!);
+  }
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }

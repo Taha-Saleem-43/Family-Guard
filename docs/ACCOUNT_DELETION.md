@@ -1,5 +1,11 @@
 # Account deletion
 
+For the active free backend, follow the [Workers guide](../workers/README.md).
+Deletion saves its cleanup stage and resumes in bounded batches through signed
+Worker jobs and the minute recovery sweep. Expiry uses ordinary cleanup writes.
+The Cloud Functions/TTL deployment instructions below describe the original
+backend implementation and are not the deployment path for Firebase Spark.
+
 Authenticated users can request deletion from Settings or before joining a circle. Password verification is sent only to Firebase Auth. The callable receives the expected UID, requires recent authentication and atomically detaches membership, disables client access through a deletion tombstone and queues cleanup.
 
 Deploy `requestAccountDeletion`, `processAccountDeletion`, and `retryAccountDeletions` together with the updated rules and indexes. Configure TTL for `accountDeletions.expireAt`. Pending jobs have no expiry; completed tombstones remain for two days to outlive cached credentials. The event worker retries failures; an hourly sweeper recovers pending jobs and expired ten-minute leases. Monitor pending age, failures and exhausted retries in production. No deployment is performed by local tests.

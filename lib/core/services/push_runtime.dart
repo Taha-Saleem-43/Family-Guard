@@ -11,6 +11,8 @@ import '../models/push_envelope.dart';
 import '../providers/push_coordinator.dart';
 import 'push_registration_store.dart';
 
+import 'backend_functions.dart';
+
 final pushCoordinatorProvider =
     StateNotifierProvider<PushCoordinator, PushState>((ref) {
       final runtime = PushRuntime();
@@ -105,12 +107,10 @@ class PushRuntime {
     String name,
     Map<String, dynamic> data,
   ) async {
-    final result = await FirebaseFunctions.instance
-        .httpsCallable(
-          name,
-          options: HttpsCallableOptions(timeout: const Duration(seconds: 15)),
-        )
-        .call(data);
+    final result = await BackendFunctions.callable(
+      name,
+      options: HttpsCallableOptions(timeout: const Duration(seconds: 15)),
+    ).call(data);
     return Map<String, dynamic>.from(result.data as Map);
   }
 

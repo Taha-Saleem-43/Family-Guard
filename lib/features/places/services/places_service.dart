@@ -1,7 +1,8 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../../../core/models/place.dart';
+
+import '../../../core/services/backend_functions.dart';
 
 class PlacesService {
   final FirebaseFirestore _firestore;
@@ -29,14 +30,12 @@ class PlacesService {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) throw StateError('Please sign in.');
     final fields = place.toMap()..remove('createdAt');
-    final result = await FirebaseFunctions.instance
-        .httpsCallable('savePlace')
-        .call({
-          'expectedUid': uid,
-          'circleId': place.circleId,
-          if (place.id.isNotEmpty) 'placeId': place.id,
-          'place': fields,
-        });
+    final result = await BackendFunctions.callable('savePlace').call({
+      'expectedUid': uid,
+      'circleId': place.circleId,
+      if (place.id.isNotEmpty) 'placeId': place.id,
+      'place': fields,
+    });
     if (FirebaseAuth.instance.currentUser?.uid != uid) {
       throw StateError('Your account changed.');
     }
@@ -62,14 +61,12 @@ class PlacesService {
     final settings = <String, Object>{};
     if (notifyArrive != null) settings['notifyArrive'] = notifyArrive;
     if (notifyLeave != null) settings['notifyLeave'] = notifyLeave;
-    await FirebaseFunctions.instance
-        .httpsCallable('togglePlaceNotifications')
-        .call({
-          'expectedUid': uid,
-          'circleId': circleId,
-          'placeId': placeId,
-          ...settings,
-        });
+    await BackendFunctions.callable('togglePlaceNotifications').call({
+      'expectedUid': uid,
+      'circleId': circleId,
+      'placeId': placeId,
+      ...settings,
+    });
   }
 
   /// Delete a saved place
@@ -77,10 +74,8 @@ class PlacesService {
     if (placeId.isEmpty) return;
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) throw StateError('Please sign in.');
-    await FirebaseFunctions.instance.httpsCallable('deletePlace').call({
-      'expectedUid': uid,
-      'circleId': circleId,
-      'placeId': placeId,
-    });
+    await BackendFunctions.callable(
+      'deletePlace',
+    ).call({'expectedUid': uid, 'circleId': circleId, 'placeId': placeId});
   }
 }

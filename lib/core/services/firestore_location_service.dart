@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:stream_transform/stream_transform.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -14,6 +13,8 @@ import '../models/circle_roster.dart';
 import '../models/movement_activity.dart';
 import 'member_profile_decoder.dart';
 import 'latest_value_queue.dart';
+
+import 'backend_functions.dart';
 
 typedef _ProfileDocuments = List<DocumentSnapshot<Map<String, dynamic>>>;
 
@@ -207,7 +208,7 @@ class FirestoreLocationService {
         final id = sha256
             .convert(utf8.encode(jsonEncode([uid, _uploadCircleId, fields])))
             .toString();
-        await FirebaseFunctions.instance.httpsCallable('ingestLocations').call({
+        await BackendFunctions.callable('ingestLocations').call({
           'expectedUid': uid,
           'circleId': _uploadCircleId,
           'sharingStartedAt': capturedAt.millisecondsSinceEpoch,

@@ -38,6 +38,9 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 .cache/
+workers/.dev.vars*
+workers/.wrangler/
+workers/build/
 .venv/
 .npm-cache/
 

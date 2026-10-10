@@ -131,7 +131,7 @@ function createPlaceHandlers(db) {
       if (confirmed && (inside ? fields.notifyArrive : fields.notifyLeave)) {
         tx.create(db.doc(`placeEvents/${hash(`${uid}:${circleId}:${place.id}:${point.id}`)}`), {
           circleId, memberId: uid, memberName: typeof profile.displayName === 'string' ? profile.displayName.slice(0, 80) : 'Family member',
-          placeId: place.id, placeName: fields.name, type: inside ? 'arrive' : 'leave', timestamp,
+          placeId: place.id, placeName: fields.name, type: inside ? 'arrive' : 'leave', timestamp, pushFanoutPending: true,
           expireAt: Timestamp.fromMillis(point.capturedAt + 30 * 86400000),
         });
       }

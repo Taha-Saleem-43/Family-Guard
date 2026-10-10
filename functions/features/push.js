@@ -93,10 +93,16 @@ function createPushHandlers(db, messaging, kind = 'sos') {
         const data = sourceData(alert);
         if (!data || data.status !== 'active' || data.pushFanout || !validId(data.circleId) ||
             !Number.isFinite(Date.parse(data.timestamp)) || Date.parse(data.timestamp) > Date.now() + 30000 ||
-            Date.now() - Date.parse(data.timestamp) > deliveryWindowMs) return;
+            Date.now() - Date.parse(data.timestamp) > deliveryWindowMs) {
+          if (data?.pushFanoutPending) tx.update(alertRef, { pushFanoutPending: false });
+          return;
+        }
         const circle = await tx.get(db.doc(`circles/${data.circleId}`));
         const ids = circle.data()?.memberIds;
-        if (!Array.isArray(ids) || ids.length > 20 || !ids.includes(data.senderId)) return;
+        if (!Array.isArray(ids) || ids.length > 20 || !ids.includes(data.senderId)) {
+          if (data.pushFanoutPending) tx.update(alertRef, { pushFanoutPending: false });
+          return;
+        }
         const recipients = [...new Set(ids.filter((uid) => uid !== data.senderId && validId(uid)))];
         const profiles = recipients.length ? await tx.getAll(...recipients.map((uid) => db.doc(`users/${uid}`))) : [];
         const allowed = profiles.filter((profile) => profile.exists && profile.data().circleId === data.circleId &&
@@ -112,7 +118,7 @@ function createPushHandlers(db, messaging, kind = 'sos') {
             expireAt: Timestamp.fromMillis(Date.now() + 2 * 86400000),
           });
         }
-        tx.update(alertRef, { pushFanout: { targetMembers: allowed.length, queuedDevices: targets.length,
+        tx.update(alertRef, { pushFanoutPending: false, pushFanout: { targetMembers: allowed.length, queuedDevices: targets.length,
           createdAt: Timestamp.now() } });
       });
     },

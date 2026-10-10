@@ -1,10 +1,11 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import '../models/sos_alert.dart';
 import 'sos_request_store.dart';
 import '../models/push_delivery_summary.dart';
+
+import '../../../core/services/backend_functions.dart';
 
 typedef SOSCallable =
     Future<Map<String, dynamic>> Function(
@@ -30,9 +31,7 @@ class SOSService {
     String name,
     Map<String, dynamic> data,
   ) async {
-    final result = await FirebaseFunctions.instance
-        .httpsCallable(name)
-        .call(data);
+    final result = await BackendFunctions.callable(name).call(data);
     return Map<String, dynamic>.from(result.data as Map);
   }
 

@@ -10,6 +10,8 @@ import '../../../core/services/push_runtime.dart';
 import '../domain/circle_model.dart';
 import '../domain/user_account_model.dart';
 
+import '../../../core/services/backend_functions.dart';
+
 class AuthService {
   final FirebaseAuth _auth;
   final FirebaseFirestore _firestore;
@@ -107,10 +109,10 @@ class AuthService {
   Future<CircleModel> createCircle({required String circleName}) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw Exception('Please sign in.');
-    final result = await _functions.httpsCallable('createCircle').call({
-      'expectedUid': uid,
-      'circleName': circleName.trim(),
-    });
+    final result = await BackendFunctions.callable(
+      'createCircle',
+      functions: _functions,
+    ).call({'expectedUid': uid, 'circleName': circleName.trim()});
     _requireCurrentUid(uid);
     final data = Map<String, dynamic>.from(result.data as Map);
     return CircleModel.fromMap(data, data['id'] as String);
@@ -124,10 +126,10 @@ class AuthService {
     if (inviteCode.trim().isEmpty) {
       throw Exception('Enter the complete invite code.');
     }
-    await _functions.httpsCallable('joinCircle').call({
-      'expectedUid': uid,
-      'inviteCode': inviteCode.trim().toUpperCase(),
-    });
+    await BackendFunctions.callable(
+      'joinCircle',
+      functions: _functions,
+    ).call({'expectedUid': uid, 'inviteCode': inviteCode.trim().toUpperCase()});
     _requireCurrentUid(uid);
     return loadCurrentAccount();
   }
@@ -183,12 +185,11 @@ class AuthService {
 
   Future<bool> enqueueAccountDeletion(String uid) async {
     _requireCurrentUid(uid);
-    final result = await _functions
-        .httpsCallable(
-          'requestAccountDeletion',
-          options: HttpsCallableOptions(timeout: const Duration(seconds: 30)),
-        )
-        .call({'expectedUid': uid});
+    final result = await BackendFunctions.callable(
+      'requestAccountDeletion',
+      functions: _functions,
+      options: HttpsCallableOptions(timeout: const Duration(seconds: 30)),
+    ).call({'expectedUid': uid});
     return result.data is Map && result.data['accepted'] == true;
   }
 
@@ -222,10 +223,10 @@ class AuthService {
   Future<DateTime> rotateCircleInvites(String circleId) async {
     final uid = _auth.currentUser?.uid;
     if (uid == null) throw Exception('Please sign in.');
-    final result = await _functions.httpsCallable('rotateCircleInvites').call({
-      'expectedUid': uid,
-      'circleId': circleId,
-    });
+    final result = await BackendFunctions.callable(
+      'rotateCircleInvites',
+      functions: _functions,
+    ).call({'expectedUid': uid, 'circleId': circleId});
     _requireCurrentUid(uid);
     final data = Map<String, dynamic>.from(result.data as Map);
     return DateTime.parse(data['expiresAt'] as String);

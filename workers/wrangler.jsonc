@@ -1,0 +1,25 @@
+{
+  "name": "family-guard-api",
+  "main": "src/index.js",
+  "account_id": "e112d2619212aeb06fbe64eece7c4f1b",
+  "compatibility_date": "2026-10-10",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "workers_dev": true,
+  "preview_urls": false,
+  "vars": {
+    "FIREBASE_PROJECT_ID": "familyguard-v2-app",
+    "FIREBASE_PROJECT_NUMBER": "160141197240",
+    "FIREBASE_APP_IDS": "1:160141197240:android:e7ef291384709f1720994d",
+  },
+  "triggers": { "crons": ["* * * * *", "*/30 * * * *"] },
+  "alias": {
+    "firebase-admin/app": "./src/firebase-shim.cjs",
+    "firebase-admin/auth": "./src/firebase-shim.cjs",
+    "firebase-admin/messaging": "./src/firebase-shim.cjs",
+    "firebase-admin/firestore": "./src/firebase-shim.cjs",
+    "firebase-functions/v2/https": "./src/firebase-shim.cjs",
+    "firebase-functions/v2/firestore": "./src/firebase-shim.cjs",
+    "firebase-functions/v2/scheduler": "./src/firebase-shim.cjs",
+  },
+  "observability": { "enabled": false },
+}

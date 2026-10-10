@@ -8,6 +8,8 @@ import 'firestore_location_service.dart';
 import 'location_fix_policy.dart';
 import 'location_outbox.dart';
 
+import 'backend_functions.dart';
+
 /// Shared by native foreground callbacks and the headless isolate.
 class LocationSyncService {
   static final uploader = FirestoreLocationService();
@@ -115,14 +117,13 @@ class LocationSyncService {
       );
       if (lease == null) return;
       try {
-        final result = await FirebaseFunctions.instance
-            .httpsCallable(
+        final result =
+            await BackendFunctions.callable(
               'ingestLocations',
               options: HttpsCallableOptions(
                 timeout: const Duration(seconds: 30),
               ),
-            )
-            .call({
+            ).call({
               'expectedUid': uid,
               'circleId': lease.circle,
               'sharingStartedAt': lease.startedAt,

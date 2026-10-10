@@ -75,7 +75,7 @@ function createSOSHandlers(db) {
           senderName: typeof user.data().displayName === 'string'
             ? user.data().displayName.trim().slice(0, 80) || 'Family member'
             : 'Family member',
-          ...location, address, timestamp, status: 'active',
+          ...location, address, timestamp, status: 'active', pushFanoutPending: true,
           resolvedAt: null, resolvedBy: null, durationSeconds: 0,
         });
         tx.update(profile, { isSosActive: true, activeSosId: alertId, lastSosAt: timestamp });
@@ -104,7 +104,7 @@ function createSOSHandlers(db) {
         }
         const now = Date.now();
         const start = Date.parse(alert.data().timestamp);
-        tx.update(alertRef, { status: 'resolved', resolvedBy: uid,
+        tx.update(alertRef, { status: 'resolved', resolvedBy: uid, pushFanoutPending: false,
           resolvedAt: new Date(now).toISOString(),
           durationSeconds: Number.isFinite(start) ? Math.max(0, Math.floor((now - start) / 1000)) : 0,
           expireAt: Timestamp.fromMillis(now + 30 * 86400000),

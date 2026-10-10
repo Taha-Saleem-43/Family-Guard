@@ -1,5 +1,10 @@
 # SOS push delivery
 
+The active free deployment uses the [Workers backend](../workers/README.md),
+signed background jobs, pending-fanout recovery and ordinary expiry cleanup.
+Use `firebase.spark.json` for Firestore deployment. The Functions/TTL deployment
+instructions below apply to the original Firebase backend configuration.
+
 Deploy the matching client, rules, indexes and functions in staging first:
 `registerPushDevice`, `unregisterPushDevice`, `acknowledgeSosPush`, `enqueueSosPush`,
 `deliverSosPush`, and `retrySosPushDeliveries`. Firebase Cloud Messaging must be enabled

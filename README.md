@@ -4,6 +4,11 @@ Family Guard is a Flutter/Firebase app for consent-based family location sharing
 
 ## Engineering status
 
+The active backend uses **Firebase Spark + Cloudflare Workers Free**. See the
+[free backend guide](workers/README.md) for local verification, credential setup,
+deployment and capacity limits. Keep Firebase billing disabled and use
+`firebase.spark.json` when deploying Firestore rules and indexes.
+
 This repository contains the secured engineering baseline and [UI refinements](docs/UI_REFINEMENTS.md) for navigation, map status, role-specific controls and recovery screens. Production deployment, owner signing, signed AAB/device acceptance, measured battery/capacity testing and Play submission remain release gates. See [the release runbook](docs/RELEASE_RUNBOOK.md) for configuration, deployment order and acceptance checks.
 
 The app does not guarantee continuous location availability or instant emergency notification. Android permissions, connectivity, notification settings and device restrictions affect delivery and freshness. Unknown and stale member status is displayed explicitly.
@@ -38,6 +43,9 @@ lib/
 functions/
   features/             Account, circle, location, place, push and SOS handlers
   test/                 Backend domain tests
+workers/
+  src/                  Free backend transport, identity verification and REST adapter
+  test/                 Security, runtime and REST feature verification
  test/                  Flutter tests and Firebase emulator integration tests
  tool/sqlite_tests/     Separate real-SQLite verification package
  scripts/               Test runner and Android native alignment verification
