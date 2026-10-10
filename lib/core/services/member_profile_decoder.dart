@@ -54,6 +54,7 @@ class MemberProfileDecoder {
       latitude = null;
       longitude = null;
     }
+    final accuracy = number('accuracyMeters');
     final rawSeen = data['lastSeen'];
     final lastSeen =
         (rawSeen is Timestamp
@@ -73,6 +74,13 @@ class MemberProfileDecoder {
       role: role,
       latitude: latitude,
       longitude: longitude,
+      accuracyMeters:
+          latitude != null &&
+              accuracy != null &&
+              accuracy >= 0 &&
+              accuracy <= 100
+          ? accuracy
+          : null,
       address: latitude != null && longitude != null
           ? '${latitude.toStringAsFixed(4)}, ${longitude.toStringAsFixed(4)}'
           : 'Location Pending',

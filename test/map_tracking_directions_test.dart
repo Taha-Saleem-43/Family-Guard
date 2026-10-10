@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import 'package:family_guard/core/models/member.dart';
@@ -41,6 +42,7 @@ void main() {
     Member(
       id: 'm_child_1',
       name: 'Child Member',
+      accuracyMeters: 18,
       avatar: '👧',
       role: UserRole.child,
       address: 'School Location',
@@ -55,105 +57,147 @@ void main() {
   ];
 
   group('NavigationService Unit Tests', () {
-    test('launchTurnByTurnNavigation executes safely for positive coordinates', () async {
-      final success = await NavigationService.launchTurnByTurnNavigation(
-        latitude: 33.6844,
-        longitude: 73.0479,
-        label: 'Islamabad',
-      );
-      expect(success, isA<bool>());
-    });
+    test(
+      'launchTurnByTurnNavigation executes safely for positive coordinates',
+      () async {
+        final success = await NavigationService.launchTurnByTurnNavigation(
+          latitude: 33.6844,
+          longitude: 73.0479,
+          label: 'Islamabad',
+        );
+        expect(success, isA<bool>());
+      },
+    );
 
-    test('launchTurnByTurnNavigation executes safely for negative coordinates', () async {
-      final success = await NavigationService.launchTurnByTurnNavigation(
-        latitude: -33.8688,
-        longitude: 151.2093,
-        label: 'Sydney Location',
-      );
-      expect(success, isA<bool>());
-    });
+    test(
+      'launchTurnByTurnNavigation executes safely for negative coordinates',
+      () async {
+        final success = await NavigationService.launchTurnByTurnNavigation(
+          latitude: -33.8688,
+          longitude: 151.2093,
+          label: 'Sydney Location',
+        );
+        expect(success, isA<bool>());
+      },
+    );
   });
 
   group('MapScreen & OpenStreetMap Widget Tests', () {
-    testWidgets('MapScreen renders OpenStreetMap (FlutterMap) and Activity filters for Parent', (WidgetTester tester) async {
+    testWidgets(
+      'MapScreen renders OpenStreetMap (FlutterMap) and Activity filters for Parent',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              appStateProvider.overrideWith(
+                (ref) => AppStateNotifier()..setRole(UserRole.parent),
+              ),
+              memberStateProvider.overrideWith(
+                (ref) => MemberStateNotifier(ref)..state = testParentAndChild,
+              ),
+            ],
+            child: const MaterialApp(home: Scaffold(body: MapScreen())),
+          ),
+        );
+
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // 1. Verify OpenStreetMap FlutterMap widget is present
+        expect(find.byType(FlutterMap), findsOneWidget);
+        expect(find.byType(TileLayer), findsOneWidget);
+        final camera = MapCamera.of(
+          tester.element(find.byType(MarkerLayer).last),
+        );
+        final mapOrigin = tester.getTopLeft(find.byType(FlutterMap));
+        final avatars = find.descendant(
+          of: find.byType(FlutterMap),
+          matching: find.byType(CircleAvatar),
+        );
+        for (var index = 0; index < testParentAndChild.length; index++) {
+          final member = testParentAndChild[index];
+          final point = camera.latLngToScreenPoint(
+            LatLng(member.latitude!, member.longitude!),
+          );
+          expect(
+            (tester.getCenter(avatars.at(index)) -
+                    (mapOrigin + Offset(point.x, point.y)))
+                .distance,
+            lessThan(1),
+          );
+        }
+        final circles = tester
+            .widgetList<CircleLayer>(find.byType(CircleLayer))
+            .expand((layer) => layer.circles);
+        expect(circles.single.radius, 18);
+        expect(circles.single.useRadiusInMeter, true);
+
+        // 2. Verify Floating Action Button for child navigation is removed from map
+        expect(find.textContaining('Navigate to'), findsNothing);
+
+        // 3. Verify Activity filter chips render
+        expect(find.textContaining('Stationary'), findsWidgets);
+        expect(find.textContaining('Walking'), findsWidgets);
+        expect(find.textContaining('Driving'), findsWidgets);
+
+        // 4. Verify Live Circle Members bottom sheet renders for parent
+        expect(find.text('2 members'), findsOneWidget);
+      },
+    );
+
+    testWidgets(
+      'MapScreen renders ONLY child own pin and hides other member pins/sheet for Child user',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              appStateProvider.overrideWith(
+                (ref) => AppStateNotifier()
+                  ..setUserSession(
+                    userId: 'm_child_1',
+                    role: UserRole.child,
+                    circleId: 'test_circle',
+                    userName: 'Child Member',
+                  ),
+              ),
+              memberStateProvider.overrideWith(
+                (ref) => MemberStateNotifier(ref)..state = testParentAndChild,
+              ),
+            ],
+            child: const MaterialApp(home: Scaffold(body: MapScreen())),
+          ),
+        );
+
+        await tester.pump(const Duration(milliseconds: 300));
+
+        // 1. Verify top child sharing location banner renders
+        expect(
+          find.textContaining('Your location is not available yet'),
+          findsOneWidget,
+        );
+
+        // 2. Verify Live Circle Members bottom sheet is HIDDEN for child
+        expect(find.text('2 members'), findsNothing);
+        expect(find.textContaining('All ('), findsNothing);
+
+        // 3. Verify Parent member name pin is NOT displayed on Child map
+        expect(find.text('Parent User'), findsNothing);
+      },
+    );
+
+    testWidgets('Tapping Activity filter chips updates active filter state', (
+      WidgetTester tester,
+    ) async {
       await tester.pumpWidget(
         ProviderScope(
           overrides: [
-            appStateProvider.overrideWith((ref) => AppStateNotifier()..setRole(UserRole.parent)),
-            memberStateProvider.overrideWith((ref) => MemberStateNotifier(ref)..state = testParentAndChild),
-          ],
-          child: const MaterialApp(
-            home: Scaffold(
-              body: MapScreen(),
+            appStateProvider.overrideWith(
+              (ref) => AppStateNotifier()..setRole(UserRole.parent),
             ),
-          ),
-        ),
-      );
-
-      await tester.pump(const Duration(milliseconds: 300));
-
-      // 1. Verify OpenStreetMap FlutterMap widget is present
-      expect(find.byType(FlutterMap), findsOneWidget);
-      expect(find.byType(TileLayer), findsOneWidget);
-
-      // 2. Verify Floating Action Button for child navigation is removed from map
-      expect(find.textContaining('Navigate to'), findsNothing);
-
-      // 3. Verify Activity filter chips render
-      expect(find.textContaining('Stationary'), findsWidgets);
-      expect(find.textContaining('Walking'), findsWidgets);
-      expect(find.textContaining('Driving'), findsWidgets);
-
-      // 4. Verify Live Circle Members bottom sheet renders for parent
-      expect(find.text('2 members'), findsOneWidget);
-    });
-
-    testWidgets('MapScreen renders ONLY child own pin and hides other member pins/sheet for Child user', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            appStateProvider.overrideWith((ref) => AppStateNotifier()
-              ..setUserSession(
-                userId: 'm_child_1',
-                role: UserRole.child,
-                circleId: 'test_circle',
-                userName: 'Child Member',
-              )),
-            memberStateProvider.overrideWith((ref) => MemberStateNotifier(ref)..state = testParentAndChild),
-          ],
-          child: const MaterialApp(
-            home: Scaffold(
-              body: MapScreen(),
+            memberStateProvider.overrideWith(
+              (ref) => MemberStateNotifier(ref)..state = testParentAndChild,
             ),
-          ),
-        ),
-      );
-
-      await tester.pump(const Duration(milliseconds: 300));
-
-      // 1. Verify top child sharing location banner renders
-      expect(find.textContaining('Your location is not available yet'), findsOneWidget);
-
-      // 2. Verify Live Circle Members bottom sheet is HIDDEN for child
-      expect(find.text('2 members'), findsNothing);
-      expect(find.textContaining('All ('), findsNothing);
-
-      // 3. Verify Parent member name pin is NOT displayed on Child map
-      expect(find.text('Parent User'), findsNothing);
-    });
-
-    testWidgets('Tapping Activity filter chips updates active filter state', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            appStateProvider.overrideWith((ref) => AppStateNotifier()..setRole(UserRole.parent)),
-            memberStateProvider.overrideWith((ref) => MemberStateNotifier(ref)..state = testParentAndChild),
           ],
-          child: const MaterialApp(
-            home: Scaffold(
-              body: MapScreen(),
-            ),
-          ),
+          child: const MaterialApp(home: Scaffold(body: MapScreen())),
         ),
       );
 
@@ -177,119 +221,135 @@ void main() {
     final testParent = testParentAndChild.first;
     final testChild = testParentAndChild.last;
 
-    testWidgets('MemberDetailSheet renders Get Directions button ONLY for Parent viewing Child', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            appStateProvider.overrideWith((ref) => AppStateNotifier()..setRole(UserRole.parent)),
-            memberStateProvider.overrideWith((ref) => MemberStateNotifier(ref)..state = testParentAndChild),
-          ],
-          child: MaterialApp(
-            home: Scaffold(
-              body: MemberDetailSheet(member: testChild),
+    testWidgets(
+      'parent can open Google Maps and request directions for a child',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              appStateProvider.overrideWith(
+                (ref) => AppStateNotifier()..setRole(UserRole.parent),
+              ),
+              memberStateProvider.overrideWith(
+                (ref) => MemberStateNotifier(ref)..state = testParentAndChild,
+              ),
+            ],
+            child: MaterialApp(
+              home: Scaffold(body: MemberDetailSheet(member: testChild)),
             ),
           ),
-        ),
-      );
+        );
 
-      await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump(const Duration(milliseconds: 300));
 
-      // Verify Member details present
-      expect(find.text('Child Member'), findsOneWidget);
-      expect(find.text('Child'), findsOneWidget);
+        // Verify Member details present
+        expect(find.text('Child Member'), findsOneWidget);
+        expect(find.text('Child'), findsOneWidget);
 
-      // Verify "Get Directions to Child 🚗" button exists for Parent viewing Child
-      final directionsButton = find.textContaining('Get Directions to Child');
-      expect(directionsButton, findsOneWidget);
+        // Verify "Get Directions to Child 🚗" button exists for Parent viewing Child
+        final directionsButton = find.text('Get directions');
+        expect(directionsButton, findsOneWidget);
 
-      // Tap Directions Button
-      await tester.tap(directionsButton);
-      await tester.pump(const Duration(milliseconds: 300));
-    });
+        // Tap Directions Button
+        await tester.tap(directionsButton);
+        await tester.pump(const Duration(milliseconds: 300));
+      },
+    );
 
-    testWidgets('MemberDetailSheet hides directions button when Child views details', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            appStateProvider.overrideWith((ref) => AppStateNotifier()
-              ..setUserSession(
-                userId: 'm_child_1',
-                role: UserRole.child,
-                circleId: 'test_circle',
-                userName: 'Child Member',
-              )),
-            memberStateProvider.overrideWith((ref) => MemberStateNotifier(ref)..state = testParentAndChild),
-          ],
-          child: MaterialApp(
-            home: Scaffold(
-              body: MemberDetailSheet(member: testChild),
+    testWidgets(
+      'MemberDetailSheet hides directions button when Child views details',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              appStateProvider.overrideWith(
+                (ref) => AppStateNotifier()
+                  ..setUserSession(
+                    userId: 'm_child_1',
+                    role: UserRole.child,
+                    circleId: 'test_circle',
+                    userName: 'Child Member',
+                  ),
+              ),
+              memberStateProvider.overrideWith(
+                (ref) => MemberStateNotifier(ref)..state = testParentAndChild,
+              ),
+            ],
+            child: MaterialApp(
+              home: Scaffold(body: MemberDetailSheet(member: testChild)),
             ),
           ),
-        ),
-      );
+        );
 
-      await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump(const Duration(milliseconds: 300));
 
-      // Verify "Get Directions" button is hidden when viewer is a Child
-      expect(find.textContaining('Get Directions'), findsNothing);
-    });
+        // Verify "Get Directions" button is hidden when viewer is a Child
+        expect(find.text('Get directions'), findsNothing);
+      },
+    );
 
-    testWidgets('MemberDetailSheet hides directions button for parent member even with coordinates', (WidgetTester tester) async {
-      await tester.pumpWidget(
-        ProviderScope(
-          overrides: [
-            appStateProvider.overrideWith((ref) => AppStateNotifier()..setRole(UserRole.parent)),
-            memberStateProvider.overrideWith((ref) => MemberStateNotifier(ref)..state = testParentAndChild),
-          ],
-          child: MaterialApp(
-            home: Scaffold(
-              body: MemberDetailSheet(member: testParent),
+    testWidgets(
+      'MemberDetailSheet hides directions button for parent member even with coordinates',
+      (WidgetTester tester) async {
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [
+              appStateProvider.overrideWith(
+                (ref) => AppStateNotifier()..setRole(UserRole.parent),
+              ),
+              memberStateProvider.overrideWith(
+                (ref) => MemberStateNotifier(ref)..state = testParentAndChild,
+              ),
+            ],
+            child: MaterialApp(
+              home: Scaffold(body: MemberDetailSheet(member: testParent)),
             ),
           ),
-        ),
-      );
+        );
 
-      await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump(const Duration(milliseconds: 300));
 
-      // Verify Parent details present
-      expect(find.text('Parent User'), findsOneWidget);
-      expect(find.text('Parent'), findsOneWidget);
+        // Verify Parent details present
+        expect(find.text('Parent User'), findsOneWidget);
+        expect(find.text('Parent'), findsOneWidget);
 
-      // Verify "Get Directions" button is hidden for Parent himself
-      expect(find.textContaining('Get Directions'), findsNothing);
-    });
+        // Verify "Get Directions" button is hidden for Parent himself
+        expect(find.textContaining('Get Directions'), findsNothing);
+      },
+    );
 
-    testWidgets('MemberDetailSheet hides directions button if coordinates are missing', (WidgetTester tester) async {
-      final noLocationChild = Member(
-        id: 'no_loc_child',
-        name: 'No Location Child',
-        avatar: '👧',
-        role: UserRole.child,
-        address: 'Location Unknown',
-        latitude: null,
-        longitude: null,
-        lastSeen: DateTime.now(),
-        batteryLevel: 50,
-        isCharging: false,
-        speedMph: 0.0,
-        movementActivity: MovementActivity.stationary,
-      );
+    testWidgets(
+      'MemberDetailSheet hides directions button if coordinates are missing',
+      (WidgetTester tester) async {
+        final noLocationChild = Member(
+          id: 'no_loc_child',
+          name: 'No Location Child',
+          avatar: '👧',
+          role: UserRole.child,
+          address: 'Location Unknown',
+          latitude: null,
+          longitude: null,
+          lastSeen: DateTime.now(),
+          batteryLevel: 50,
+          isCharging: false,
+          speedMph: 0.0,
+          movementActivity: MovementActivity.stationary,
+        );
 
-      await tester.pumpWidget(
-        ProviderScope(
-          child: MaterialApp(
-            home: Scaffold(
-              body: MemberDetailSheet(member: noLocationChild),
+        await tester.pumpWidget(
+          ProviderScope(
+            child: MaterialApp(
+              home: Scaffold(body: MemberDetailSheet(member: noLocationChild)),
             ),
           ),
-        ),
-      );
+        );
 
-      await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump(const Duration(milliseconds: 300));
 
-      // Verify "Get Directions" button is hidden when lat/lng are null
-      expect(find.textContaining('Get Directions'), findsNothing);
-    });
+        // Verify "Get Directions" button is hidden when lat/lng are null
+        expect(find.textContaining('Get Directions'), findsNothing);
+      },
+    );
   });
 }
 
@@ -381,12 +441,22 @@ class _MockHttpClientResponse implements HttpClientResponse {
   HttpHeaders get headers => _MockHttpHeaders();
 
   @override
-  HttpClientResponseCompressionState get compressionState => HttpClientResponseCompressionState.notCompressed;
+  HttpClientResponseCompressionState get compressionState =>
+      HttpClientResponseCompressionState.notCompressed;
 
   @override
-  StreamSubscription<List<int>> listen(void Function(List<int> event)? onData,
-      {Function? onError, void Function()? onDone, bool? cancelOnError}) {
-    return const Stream<List<int>>.empty().listen(onData, onError: onError, onDone: onDone, cancelOnError: cancelOnError);
+  StreamSubscription<List<int>> listen(
+    void Function(List<int> event)? onData, {
+    Function? onError,
+    void Function()? onDone,
+    bool? cancelOnError,
+  }) {
+    return const Stream<List<int>>.empty().listen(
+      onData,
+      onError: onError,
+      onDone: onDone,
+      cancelOnError: cancelOnError,
+    );
   }
 
   @override

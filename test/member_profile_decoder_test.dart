@@ -5,6 +5,35 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   final now = DateTime.utc(2026, 10, 9);
+  test('accuracy is optional, bounded and belongs to valid coordinates', () {
+    for (final accuracy in [null, -1, 101, double.nan, 'precise', 12.5]) {
+      final member = MemberProfileDecoder.decode(
+        'child',
+        {
+          'latitude': 33,
+          'longitude': 73,
+          'accuracyMeters': accuracy,
+          'lastSeen': now.toIso8601String(),
+        },
+        currentUid: 'parent',
+        now: now,
+      );
+      expect(member.accuracyMeters, accuracy == 12.5 ? 12.5 : null);
+      expect(
+        member.copyWith(batteryLevel: 90).accuracyMeters,
+        member.accuracyMeters,
+      );
+    }
+    expect(
+      MemberProfileDecoder.decode(
+        'child',
+        {'accuracyMeters': 12},
+        currentUid: 'parent',
+        now: now,
+      ).accuracyMeters,
+      null,
+    );
+  });
   test('freshness checks preserve state unless a stale status changes', () {
     final first = MemberProfileDecoder.decode(
       'first',

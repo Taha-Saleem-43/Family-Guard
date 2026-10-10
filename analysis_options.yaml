@@ -10,6 +10,7 @@
 include: package:flutter_lints/flutter.yaml
 analyzer:
   exclude:
+    - 'build/**'
     - '**/node_modules/**'
     - 'Figma Designs/**'
     - '.pub-cache/**'

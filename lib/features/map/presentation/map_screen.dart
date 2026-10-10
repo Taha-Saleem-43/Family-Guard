@@ -73,7 +73,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     return LayoutBuilder(
       builder: (context, constraints) => Stack(
         children: [
-          // ── 100% Free OpenStreetMap Interactive Canvas ──────────────────
+          // OpenStreetMap canvas; hosting capacity follows the tile provider policy.
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
@@ -87,6 +87,29 @@ class _MapScreenState extends ConsumerState<MapScreen> {
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.familyguard.app',
+              ),
+
+              // Reported horizontal uncertainty, not a guaranteed boundary.
+              CircleLayer(
+                circles: [
+                  for (final member in members)
+                    if (member.latitude != null &&
+                        member.longitude != null &&
+                        member.accuracyMeters != null &&
+                        member.accuracyMeters!.isFinite &&
+                        member.accuracyMeters! > 0 &&
+                        member.accuracyMeters! <= 100)
+                      CircleMarker(
+                        point: LatLng(member.latitude!, member.longitude!),
+                        radius: member.accuracyMeters!,
+                        useRadiusInMeter: true,
+                        color: member.pinColor.withValues(
+                          alpha: member.isStale ? 0.04 : 0.12,
+                        ),
+                        borderColor: member.pinColor.withValues(alpha: 0.4),
+                        borderStrokeWidth: 1,
+                      ),
+                ],
               ),
 
               // Saved Places Geofence Radius Circles Layer
@@ -128,6 +151,16 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                         point: LatLng(member.latitude!, member.longitude!),
                         width: 140,
                         height: 85,
+                        // Anchor the avatar center, not the label beneath it.
+                        alignment: Marker.computePixelAlignment(
+                          width: 140,
+                          height: 85,
+                          left: 70,
+                          top:
+                              (_selectedMemberId == member.id ? 20 : 16) +
+                              3 +
+                              (member.isSosActive ? 4 : 3),
+                        ),
                         child: _buildMapPin(
                           member,
                           isSelected: _selectedMemberId == member.id,

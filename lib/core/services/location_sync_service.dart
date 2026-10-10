@@ -56,6 +56,7 @@ class LocationSyncService {
       'capturedAt': captured.millisecondsSinceEpoch,
       'latitude': location.coords.latitude,
       'longitude': location.coords.longitude,
+      'accuracyMeters': location.coords.accuracy,
       'speedMph': speed.isFinite && speed <= 1000 ? speed : 0.0,
       'movementActivity': MovementActivity.fromSpeed(
         speed,
