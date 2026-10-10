@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../core/presentation/member_activity_status.dart';
 import '../../../core/models/member.dart';
 import '../../../core/models/movement_activity.dart';
 import '../../../core/models/place.dart';
@@ -64,7 +65,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
     final members = selectedFilter == null
         ? visibleMembers
         : visibleMembers
-              .where((m) => m.movementActivity == selectedFilter)
+              .where((m) => m.currentActivity == selectedFilter)
               .toList();
     final located = visibleMembers
         .where((member) => member.latitude != null && member.longitude != null)
@@ -409,7 +410,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
   ) {
     int countFor(MovementActivity? filter) {
       if (filter == null) return allMembers.length;
-      return allMembers.where((m) => m.movementActivity == filter).length;
+      return allMembers.where((m) => m.currentActivity == filter).length;
     }
 
     return Container(
@@ -512,7 +513,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
 
   // ── Map Pin Marker Widget ─────────────────────────────────────────
   Widget _buildMapPin(Member member, {required bool isSelected}) {
-    final activity = member.movementActivity;
+    final activity = member.currentActivity;
     final batColor = BatteryHelper.getColor(member.batteryLevel);
     final batIcon = BatteryHelper.getIcon(
       member.batteryLevel,
@@ -577,13 +578,18 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                     color: isSos ? AppColors.sosRed : Colors.white,
                     shape: BoxShape.circle,
                     border: Border.all(
-                      color: isSos ? Colors.white : activity.color,
+                      color: isSos
+                          ? Colors.white
+                          : (activity?.color ?? AppColors.textMuted),
                       width: 1.5,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: (isSos ? AppColors.sosRed : activity.color)
-                            .withValues(alpha: 0.3),
+                        color:
+                            (isSos
+                                    ? AppColors.sosRed
+                                    : (activity?.color ?? AppColors.textMuted))
+                                .withValues(alpha: 0.3),
                         blurRadius: 4,
                       ),
                     ],
@@ -595,7 +601,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
                           color: Colors.white,
                         )
                       : Text(
-                          activity.emoji,
+                          (activity?.emoji ?? '🕓'),
                           style: const TextStyle(fontSize: 10),
                         ),
                 ),
@@ -688,7 +694,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
         ? 'SOS active'
         : !hasLocation
         ? 'Location not available yet'
-        : member.isStale
+        : member.currentActivity == null
         ? 'Last location may be outdated'
         : member.movementActivity.label;
     return Material(

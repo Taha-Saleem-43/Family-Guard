@@ -6,6 +6,7 @@ import 'package:family_guard/core/models/movement_activity.dart';
 import 'package:family_guard/core/providers/app_state_provider.dart';
 import 'package:family_guard/core/providers/member_status_provider.dart';
 import 'package:family_guard/features/map/presentation/widgets/member_detail_sheet.dart';
+import 'package:family_guard/core/presentation/member_activity_status.dart';
 
 void main() {
   Member member({
@@ -50,6 +51,26 @@ void main() {
     await tester.pump(const Duration(milliseconds: 100));
   }
 
+  test('current movement requires fresh valid coordinates', () {
+    final fresh = member().copyWith(movementActivity: MovementActivity.walking);
+    expect(fresh.currentActivity, MovementActivity.walking);
+    expect(fresh.copyWith(isStale: true).currentActivity, isNull);
+    expect(member(stale: true).currentActivity, isNull);
+    expect(member(located: false).currentActivity, isNull);
+    expect(fresh.copyWith(latitude: 100).currentActivity, isNull);
+    expect(
+      fresh
+          .copyWith(lastSeen: DateTime.now().add(const Duration(minutes: 2)))
+          .currentActivity,
+      isNull,
+    );
+    // Aging changes presentation without deleting the captured movement.
+    expect(
+      fresh.copyWith(isStale: true).movementActivity,
+      MovementActivity.walking,
+    );
+  });
+
   testWidgets(
     'stale positions keep Maps available with an explicit warning and accuracy',
     (tester) async {
@@ -58,6 +79,8 @@ void main() {
       expect(find.text('Get directions'), findsOneWidget);
       expect(find.textContaining('Location may be outdated'), findsOneWidget);
       expect(find.text('Reported accuracy: ±18 m'), findsOneWidget);
+      expect(find.textContaining('Activity unknown'), findsOneWidget);
+      expect(find.text('0.0 mph'), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );

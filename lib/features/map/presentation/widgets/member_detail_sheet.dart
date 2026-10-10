@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import '../../../../core/presentation/member_activity_status.dart';
 import '../../../../core/models/member.dart';
 import '../../../../core/models/movement_activity.dart';
 import '../../../../core/providers/app_state_provider.dart';
@@ -44,7 +45,7 @@ class MemberDetailSheet extends ConsumerWidget {
       orElse: () => member,
     );
 
-    final activity = currentMember.movementActivity;
+    final activity = currentMember.currentActivity;
     final batColor = BatteryHelper.getColor(currentMember.batteryLevel);
     final batIcon = BatteryHelper.getIcon(
       currentMember.batteryLevel,
@@ -138,13 +139,16 @@ class MemberDetailSheet extends ConsumerWidget {
                         decoration: BoxDecoration(
                           color: Colors.white,
                           shape: BoxShape.circle,
-                          border: Border.all(color: activity.color, width: 1.5),
+                          border: Border.all(
+                            color: (activity?.color ?? AppColors.textMuted),
+                            width: 1.5,
+                          ),
                           boxShadow: const [
                             BoxShadow(color: Colors.black12, blurRadius: 4),
                           ],
                         ),
                         child: Text(
-                          activity.emoji,
+                          (activity?.emoji ?? '🕓'),
                           style: const TextStyle(fontSize: 13),
                         ),
                       ),
@@ -328,12 +332,15 @@ class MemberDetailSheet extends ConsumerWidget {
               children: [
                 // 1. Speed & Movement Activity Card
                 _buildDetailCard(
-                  icon: activity.icon,
-                  iconColor: activity.color,
-                  bgColor: activity.bgColor,
+                  icon: (activity?.icon ?? Icons.schedule_rounded),
+                  iconColor: (activity?.color ?? AppColors.textMuted),
+                  bgColor: (activity?.bgColor ?? Colors.grey.shade100),
                   title: 'Speed & Motion',
-                  value: '${currentMember.speedMph.toStringAsFixed(1)} mph',
-                  subtitle: '${activity.emoji} ${activity.label}',
+                  value: activity == null
+                      ? 'Unavailable'
+                      : '${currentMember.speedMph.toStringAsFixed(1)} mph',
+                  subtitle:
+                      '${(activity?.emoji ?? '🕓')} ${(activity?.label ?? 'Activity unknown')}',
                 ),
 
                 // 2. Battery Status Badge Card

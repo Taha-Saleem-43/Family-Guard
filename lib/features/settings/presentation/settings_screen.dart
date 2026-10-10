@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../core/presentation/member_activity_status.dart';
 import '../../../core/models/member.dart';
 import '../../../core/models/movement_activity.dart';
 import '../../../core/providers/app_state_provider.dart';
@@ -374,7 +375,7 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Widget _buildMemberRow(BuildContext context, WidgetRef ref, Member member) {
-    final activity = member.movementActivity;
+    final activity = member.currentActivity;
     final batColor = BatteryHelper.getColor(member.batteryLevel);
     final batIcon = BatteryHelper.getIcon(
       member.batteryLevel,
@@ -447,27 +448,29 @@ class SettingsScreen extends ConsumerWidget {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: activity.bgColor,
+                          color: (activity?.bgColor ?? Colors.grey.shade100),
                           borderRadius: BorderRadius.circular(6),
                           border: Border.all(
-                            color: activity.color.withValues(alpha: 0.3),
+                            color: (activity?.color ?? AppColors.textMuted)
+                                .withValues(alpha: 0.3),
                           ),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              activity.emoji,
+                              (activity?.emoji ?? '🕓'),
                               style: const TextStyle(fontSize: 11),
                             ),
                             const SizedBox(width: 3),
                             Flexible(
                               child: Text(
-                                activity.label,
+                                (activity?.label ?? 'Activity unknown'),
                                 style: TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w800,
-                                  color: activity.color,
+                                  color:
+                                      (activity?.color ?? AppColors.textMuted),
                                 ),
                               ),
                             ),
