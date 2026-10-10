@@ -37,6 +37,29 @@ function signed(claims = valid, header = { alg: "RS256", kid: "test-key" }) {
   );
 }
 const fetchKeys = async () => new Response(JSON.stringify({ keys: [jwk] }));
+test('pending key fetches are never shared across invocations', async () => {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  let calls = 0;
+  const endpoint = 'https://example.test/invocation-keys';
+  const fetcher = async () => {
+    if (++calls === 1) await gate;
+    return fetchKeys();
+  };
+  const pending = verifyJwt(signed(), endpoint, () => true, fetcher);
+  try {
+    const independent = verifyJwt(signed(), endpoint, () => true, fetcher);
+    const result = await Promise.race([
+      independent,
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Shared pending I/O')), 200)),
+    ]);
+    assert.equal(result.sub, valid.sub);
+    assert.equal(calls, 2);
+  } finally {
+    release();
+    await pending;
+  }
+});
 const claimsValid = (c) =>
   c.aud === "project" && c.iss === "issuer" && c.sub === "user";
 

@@ -35,7 +35,6 @@ const headers = {
 };
 const response = (value, status = 200) =>
   new Response(JSON.stringify(value), { status, headers });
-let client;
 function configured(env) {
   return (
     env.FIREBASE_PROJECT_ID === "familyguard-v2-app" &&
@@ -45,7 +44,7 @@ function configured(env) {
 }
 function scoped(env, operation) {
   if (!configured(env)) throw new ApiError("failed-precondition");
-  client ??= new GoogleClient(env);
+  const client = new GoogleClient(env);
   return scope.run({ client, env, created: [] }, operation);
 }
 async function body(request) {

@@ -5,7 +5,7 @@ const {
   verify,
 } = require("node:crypto");
 const keyCaches = new Map();
-const keyRefreshes = new Map();
+let completedOAuth;
 const scopes =
   "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/firebase.messaging";
 const b64 = (value) =>
@@ -56,9 +56,8 @@ async function verifyJwt(token, url, validate, fetcher = fetch) {
     cached.until < Date.now() ||
     (!cached.keys.has(header.kid) && Date.now() - cached.fetchedAt > 60000)
   ) {
-    let refresh = keyRefreshes.get(url);
-    if (!refresh) {
-      refresh = (async () => {
+    // Workers must never reuse pending I/O owned by another invocation.
+    cached = await (async () => {
         const response = await fetcher(url, {
           signal: AbortSignal.timeout(10000),
         });
@@ -81,10 +80,7 @@ async function verifyJwt(token, url, validate, fetcher = fetch) {
         };
         keyCaches.set(url, result);
         return result;
-      })().finally(() => keyRefreshes.delete(url));
-      keyRefreshes.set(url, refresh);
-    }
-    cached = await refresh;
+      })();
   }
   const key = cached.keys.get(header.kid);
   if (
@@ -101,7 +97,8 @@ async function verifyJwt(token, url, validate, fetcher = fetch) {
 }
 async function verifyRequest(request, env) {
   const auth = request.headers.get("Authorization");
-  if (!auth?.startsWith("Bearer ")) throw new ApiError("unauthenticated");
+  if (!auth?.startsWith("Bearer ") || !request.headers.get("X-Firebase-AppCheck"))
+    throw new ApiError("unauthenticated");
   const [claims, app] = await Promise.all([
     verifyJwt(
       auth.slice(7),
@@ -137,6 +134,9 @@ class GoogleClient {
     this.refresh = null;
   }
   async token() {
+    if (completedOAuth?.key === this.env.GOOGLE_SERVICE_ACCOUNT &&
+        completedOAuth.token.until > Date.now() + 60000)
+      return completedOAuth.token.value;
     if (this.cachedToken?.until > Date.now() + 60000)
       return this.cachedToken.value;
     if (this.refresh) return this.refresh;
@@ -188,6 +188,7 @@ class GoogleClient {
       value: data.access_token,
       until: Date.now() + Math.min(data.expires_in, 3600) * 1000,
     };
+    completedOAuth = {key: this.env.GOOGLE_SERVICE_ACCOUNT, token: this.cachedToken};
     return data.access_token;
   }
   async request(url, body, method = "POST") {
