@@ -42,6 +42,7 @@ workers/.dev.vars*
 workers/.wrangler/
 workers/build/
 .venv/
+android/.kotlin/
 .npm-cache/
 
 # Symbolication related
