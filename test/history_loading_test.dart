@@ -145,4 +145,33 @@ void main() {
       expect(find.text('No Location History Yet'), findsOneWidget);
     },
   );
+  testWidgets('history ranges expose button and selected semantics', (
+    tester,
+  ) async {
+    final service = ControlledHistoryService()..pending.complete([]);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          firestoreLocationServiceProvider.overrideWithValue(service),
+          appStateProvider.overrideWith(
+            (ref) => AppStateNotifier()..setUserId('user'),
+          ),
+        ],
+        child: const MaterialApp(home: HistoryScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final range = find.widgetWithText(TextButton, '7 Days');
+    expect(range, findsOneWidget);
+    await tester.tap(range);
+    await tester.pumpAndSettle();
+    final scope = ProviderScope.containerOf(
+      tester.element(find.byType(HistoryScreen)),
+    );
+    expect(scope.read(selectedHistoryTimeframeProvider), 1);
+    final selection = find
+        .ancestor(of: range, matching: find.byType(Semantics))
+        .first;
+    expect(tester.widget<Semantics>(selection).properties.selected, isTrue);
+  });
 }

@@ -28,7 +28,12 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   Widget _scrollableStatus({required Widget child}) => LayoutBuilder(
     builder: (context, constraints) => ListView(
       physics: const AlwaysScrollableScrollPhysics(),
-      children: [SizedBox(height: constraints.maxHeight, child: Center(child: child))],
+      children: [
+        SizedBox(
+          height: constraints.maxHeight,
+          child: Center(child: child),
+        ),
+      ],
     ),
   );
 
@@ -37,20 +42,27 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final selectedTab = ref.watch(selectedHistoryTimeframeProvider);
     final members = ref.watch(memberStateProvider);
     final appState = ref.watch(appStateProvider);
-    final selectedMemberId = ref.watch(selectedHistoryMemberIdProvider) ?? appState.userId;
+    final selectedMemberId =
+        ref.watch(selectedHistoryMemberIdProvider) ?? appState.userId;
     final timelineItems = ref.watch(historyTimelineProvider);
     final polylinePoints = ref.watch(historyRoutePolylineProvider);
     final history = ref.watch(rawLocationHistoryProvider);
     final pager = ref.read(rawLocationHistoryProvider.notifier);
-    final canSelectMembers = appState.role == UserRole.parent && members.length > 1;
+    final canSelectMembers =
+        appState.role == UserRole.parent && members.length > 1;
 
-    final selectedMember = members.where(
-      (m) => m.id == selectedMemberId || m.id == 'm_self').firstOrNull
-      ?? members.firstOrNull;
+    final selectedMember =
+        members
+            .where((m) => m.id == selectedMemberId || m.id == 'm_self')
+            .firstOrNull ??
+        members.firstOrNull;
 
     return Scaffold(
       backgroundColor: AppColors.bg,
-      appBar: const ScreenHeader(title: 'History', subtitle: 'Explore captured locations and past journeys.'),
+      appBar: const ScreenHeader(
+        title: 'History',
+        subtitle: 'Explore captured locations and past journeys.',
+      ),
       body: RefreshIndicator(
         onRefresh: () async {
           try {
@@ -67,29 +79,42 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             // Member Selector Bar (compact horizontal chips)
             if (canSelectMembers)
               SizedBox(
-                height: 40,
+                height: MediaQuery.textScalerOf(context).scale(12) + 32,
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: members.length,
-                  separatorBuilder: (context, index) => const SizedBox(width: 8),
+                  separatorBuilder: (context, index) =>
+                      const SizedBox(width: 8),
                   itemBuilder: (context, index) {
                     final member = members[index];
-                    final isSelected = member.id == selectedMemberId || (selectedMemberId.isEmpty && index == 0);
+                    final isSelected =
+                        member.id == selectedMemberId ||
+                        (selectedMemberId.isEmpty && index == 0);
 
                     return ChoiceChip(
-                      avatar: Text(member.avatar, style: const TextStyle(fontSize: 14)),
+                      avatar: Text(
+                        member.avatar,
+                        style: const TextStyle(fontSize: 14),
+                      ),
                       label: Text(member.name),
                       selected: isSelected,
                       selectedColor: AppColors.primary.withValues(alpha: 0.2),
                       labelStyle: TextStyle(
-                        color: isSelected ? AppColors.primary : AppColors.textSecondary,
-                        fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                        color: isSelected
+                            ? AppColors.primary
+                            : AppColors.textSecondary,
+                        fontWeight: isSelected
+                            ? FontWeight.w800
+                            : FontWeight.w600,
                         fontSize: 12,
                       ),
                       onSelected: (selected) {
                         if (selected) {
-                          ref.read(selectedHistoryMemberIdProvider.notifier).state = member.id;
+                          ref
+                              .read(selectedHistoryMemberIdProvider.notifier)
+                              .state = member
+                              .id;
                         }
                       },
                     );
@@ -102,33 +127,57 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
-                children: ['Today', '7 Days', '30 Days'].asMap().entries.map((entry) {
+                children: ['Today', '7 Days', '30 Days'].asMap().entries.map((
+                  entry,
+                ) {
                   final idx = entry.key;
                   final text = entry.value;
                   final isSelected = selectedTab == idx;
 
                   return Expanded(
-                    child: GestureDetector(
-                      onTap: () {
-                        ref.read(selectedHistoryTimeframeProvider.notifier).state = idx;
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        decoration: BoxDecoration(
-                          color: isSelected ? AppColors.primary : Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isSelected ? AppColors.primary : AppColors.border,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Semantics(
+                        selected: isSelected,
+                        child: TextButton(
+                          onPressed: () =>
+                              ref
+                                      .read(
+                                        selectedHistoryTimeframeProvider
+                                            .notifier,
+                                      )
+                                      .state =
+                                  idx,
+                          style: TextButton.styleFrom(
+                            minimumSize: const Size(0, 48),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 12,
+                            ),
+                            backgroundColor: isSelected
+                                ? AppColors.primary
+                                : Colors.white,
+                            foregroundColor: isSelected
+                                ? Colors.white
+                                : AppColors.textSecondary,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              side: BorderSide(
+                                color: isSelected
+                                    ? AppColors.primary
+                                    : AppColors.border,
+                              ),
+                            ),
                           ),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          text,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: isSelected ? FontWeight.w900 : FontWeight.w700,
-                            color: isSelected ? Colors.white : AppColors.textSecondary,
+                          child: Text(
+                            text,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: isSelected
+                                  ? FontWeight.w900
+                                  : FontWeight.w700,
+                            ),
                           ),
                         ),
                       ),
@@ -159,12 +208,15 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                           initialCenter: polylinePoints.first,
                           initialZoom: 13.0,
                           interactionOptions: const InteractionOptions(
-                            flags: InteractiveFlag.drag | InteractiveFlag.pinchZoom,
+                            flags:
+                                InteractiveFlag.drag |
+                                InteractiveFlag.pinchZoom,
                           ),
                         ),
                         children: [
                           TileLayer(
-                            urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                            urlTemplate:
+                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                             userAgentPackageName: 'com.familyguard.app',
                           ),
                           PolylineLayer(
@@ -182,14 +234,22 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                 point: polylinePoints.first,
                                 width: 28,
                                 height: 28,
-                                child: const Icon(Icons.location_on_rounded, color: AppColors.sosRed, size: 28),
+                                child: const Icon(
+                                  Icons.location_on_rounded,
+                                  color: AppColors.sosRed,
+                                  size: 28,
+                                ),
                               ),
                               if (polylinePoints.length > 1)
                                 Marker(
                                   point: polylinePoints.last,
                                   width: 28,
                                   height: 28,
-                                  child: const Icon(Icons.flag_rounded, color: AppColors.teal, size: 28),
+                                  child: const Icon(
+                                    Icons.flag_rounded,
+                                    color: AppColors.teal,
+                                    size: 28,
+                                  ),
                                 ),
                             ],
                           ),
@@ -200,11 +260,19 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: const [
-                            Icon(Icons.route_rounded, size: 40, color: AppColors.primary),
+                            Icon(
+                              Icons.route_rounded,
+                              size: 40,
+                              color: AppColors.primary,
+                            ),
                             SizedBox(height: 4),
                             Text(
                               'Route Map Timeline',
-                              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
                           ],
                         ),
@@ -215,12 +283,19 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       top: 12,
                       left: 12,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.surface.withValues(alpha: 0.9),
                           borderRadius: BorderRadius.circular(12),
                           boxShadow: const [
-                            BoxShadow(color: Colors.black12, blurRadius: 4, offset: Offset(0, 2)),
+                            BoxShadow(
+                              color: Colors.black12,
+                              blurRadius: 4,
+                              offset: Offset(0, 2),
+                            ),
                           ],
                         ),
                         child: Row(
@@ -231,9 +306,16 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                             ),
                             const SizedBox(width: 6),
                             Text(
-                              history.isLoading ? 'Loading history…' : history.hasError
-                                  ? 'History unavailable' : '${timelineItems.length} loaded event(s)',
-                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                              history.isLoading
+                                  ? 'Loading history…'
+                                  : history.hasError
+                                  ? 'History unavailable'
+                                  : '${timelineItems.length} loaded event(s)',
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
                           ],
                         ),
@@ -245,18 +327,29 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       bottom: 10,
                       right: 12,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
                         decoration: BoxDecoration(
                           color: AppColors.teal.withValues(alpha: 0.9),
                           borderRadius: BorderRadius.circular(10),
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.shield_outlined, size: 12, color: Colors.white),
+                            const Icon(
+                              Icons.shield_outlined,
+                              size: 12,
+                              color: Colors.white,
+                            ),
                             const SizedBox(width: 4),
                             Text(
                               '30-day history window',
-                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.white),
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
                             ),
                           ],
                         ),
@@ -272,12 +365,20 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
               child: history.isLoading
                   ? _scrollableStatus(child: const CircularProgressIndicator())
                   : history.hasError
-                  ? _scrollableStatus(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      const Text('Could not load location history.'),
-                      const SizedBox(height: 8),
-                      FilledButton(onPressed: () => ref.invalidate(rawLocationHistoryProvider),
-                        child: const Text('Retry history')),
-                    ]))
+                  ? _scrollableStatus(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Could not load location history.'),
+                          const SizedBox(height: 8),
+                          FilledButton(
+                            onPressed: () =>
+                                ref.invalidate(rawLocationHistoryProvider),
+                            child: const Text('Retry history'),
+                          ),
+                        ],
+                      ),
+                    )
                   : timelineItems.isEmpty
                   ? _scrollableStatus(
                       child: Padding(
@@ -285,17 +386,29 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.center,
                           children: const [
-                            Icon(Icons.history_toggle_off_rounded, size: 64, color: AppColors.textMuted),
+                            Icon(
+                              Icons.history_toggle_off_rounded,
+                              size: 64,
+                              color: AppColors.textMuted,
+                            ),
                             SizedBox(height: 16),
                             Text(
                               'No Location History Yet',
-                              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: AppColors.textPrimary),
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: AppColors.textPrimary,
+                              ),
                             ),
                             SizedBox(height: 8),
                             Text(
                               'Location movements and timeline trips will appear here as your Circle travels.',
                               textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 13, color: AppColors.textSecondary, height: 1.4),
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: AppColors.textSecondary,
+                                height: 1.4,
+                              ),
                             ),
                           ],
                         ),
@@ -303,26 +416,48 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                     )
                   : ListView.separated(
                       physics: const AlwaysScrollableScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      itemCount: timelineItems.length + (pager.hasMore || pager.moreError != null ? 1 : 0),
-                      separatorBuilder: (context, index) => const SizedBox(height: 12),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      itemCount:
+                          timelineItems.length +
+                          (pager.hasMore || pager.moreError != null ? 1 : 0),
+                      separatorBuilder: (context, index) =>
+                          const SizedBox(height: 12),
                       itemBuilder: (context, index) {
                         if (index == timelineItems.length) {
-                          return Padding(padding: const EdgeInsets.symmetric(vertical: 12),
-                            child: Column(children: [
-                              if (pager.moreError != null) Text(pager.moreError!, textAlign: TextAlign.center),
-                              if (pager.hasMore) OutlinedButton(
-                                onPressed: pager.loadingMore ? null : pager.loadMore,
-                                child: Text(pager.loadingMore ? 'Loading older history…' : 'Load older history'),
-                              ),
-                            ]),
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: Column(
+                              children: [
+                                if (pager.moreError != null)
+                                  Text(
+                                    pager.moreError!,
+                                    textAlign: TextAlign.center,
+                                  ),
+                                if (pager.hasMore)
+                                  OutlinedButton(
+                                    onPressed: pager.loadingMore
+                                        ? null
+                                        : pager.loadMore,
+                                    child: Text(
+                                      pager.loadingMore
+                                          ? 'Loading older history…'
+                                          : 'Load older history',
+                                    ),
+                                  ),
+                              ],
+                            ),
                           );
                         }
                         final item = timelineItems[index];
 
                         return Card(
                           elevation: 1,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
                           child: Padding(
                             padding: const EdgeInsets.all(16),
                             child: Row(
@@ -334,46 +469,77 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                                     color: item.color.withValues(alpha: 0.12),
                                     borderRadius: BorderRadius.circular(14),
                                   ),
-                                  child: Icon(item.icon, size: 24, color: item.color),
+                                  child: Icon(
+                                    item.icon,
+                                    size: 24,
+                                    color: item.color,
+                                  ),
                                 ),
                                 const SizedBox(width: 14),
                                 Expanded(
                                   child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
                                     children: [
                                       Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
                                         children: [
                                           Expanded(
                                             child: Text(
                                               item.title,
-                                              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: AppColors.textPrimary),
+                                              style: const TextStyle(
+                                                fontSize: 15,
+                                                fontWeight: FontWeight.w900,
+                                                color: AppColors.textPrimary,
+                                              ),
                                               overflow: TextOverflow.ellipsis,
                                             ),
                                           ),
                                           Text(
-                                            DateFormat('h:mm a').format(item.startTime),
-                                            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.textMuted),
+                                            DateFormat(
+                                              'h:mm a',
+                                            ).format(item.startTime),
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w700,
+                                              color: AppColors.textMuted,
+                                            ),
                                           ),
                                         ],
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
                                         item.address,
-                                        style: const TextStyle(fontSize: 13, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          color: AppColors.textSecondary,
+                                          fontWeight: FontWeight.w500,
+                                        ),
                                       ),
                                       const SizedBox(height: 6),
                                       Row(
-                                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
                                         children: [
                                           Text(
                                             item.durationText,
-                                            style: TextStyle(fontSize: 11, color: item.color, fontWeight: FontWeight.w800),
+                                            style: TextStyle(
+                                              fontSize: 11,
+                                              color: item.color,
+                                              fontWeight: FontWeight.w800,
+                                            ),
                                           ),
-                                          if (item.type == TimelineItemType.trip && item.distanceMiles > 0)
+                                          if (item.type ==
+                                                  TimelineItemType.trip &&
+                                              item.distanceMiles > 0)
                                             Text(
                                               '~${item.distanceMiles.toStringAsFixed(1)} mi',
-                                              style: const TextStyle(fontSize: 11, color: AppColors.textMuted, fontWeight: FontWeight.w700),
+                                              style: const TextStyle(
+                                                fontSize: 11,
+                                                color: AppColors.textMuted,
+                                                fontWeight: FontWeight.w700,
+                                              ),
                                             ),
                                         ],
                                       ),
