@@ -1,3 +1,7 @@
+import 'package:family_guard/core/models/movement_activity.dart';
+import 'package:family_guard/features/settings/presentation/settings_screen.dart';
+import 'package:family_guard/core/providers/member_status_provider.dart';
+import 'package:family_guard/core/models/member.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -94,6 +98,86 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pumpAndSettle();
     expect(find.text('Allow background location'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('settings handles long names and unavailable invite codes', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          appStateProvider.overrideWith(
+            (ref) => AppStateNotifier()..setRole(UserRole.parent),
+          ),
+          memberStateProvider.overrideWith(
+            (ref) => MemberStateNotifier(ref)
+              ..state = [
+                Member(
+                  id: 'relative',
+                  address: '',
+                  lastSeen: DateTime.now(),
+                  batteryLevel: 75,
+                  speedMph: 0,
+                  movementActivity: MovementActivity.stationary,
+                  name: 'A very long family member name that wraps safely',
+                  avatar: 'A',
+                  role: UserRole.parent,
+                ),
+              ],
+          ),
+        ],
+        child: MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(2)),
+            child: child!,
+          ),
+          home: const SettingsScreen(),
+        ),
+      ),
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(tester.takeException(), isNull);
+    await tester.scrollUntilVisible(
+      find.byTooltip('Copy Child Invite Code'),
+      150,
+    );
+    expect(
+      tester
+          .widget<IconButton>(
+            find
+                .ancestor(
+                  of: find.byTooltip('Copy Child Invite Code'),
+                  matching: find.byType(IconButton),
+                )
+                .first,
+          )
+          .onPressed,
+      isNull,
+    );
+    await tester.scrollUntilVisible(
+      find.byTooltip('Copy Parent Invite Code'),
+      150,
+    );
+    expect(
+      tester
+          .widget<IconButton>(
+            find
+                .ancestor(
+                  of: find.byTooltip('Copy Parent Invite Code'),
+                  matching: find.byType(IconButton),
+                )
+                .first,
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(find.text('Code unavailable'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 }

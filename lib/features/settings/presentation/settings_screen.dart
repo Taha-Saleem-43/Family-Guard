@@ -175,11 +175,13 @@ class SettingsScreen extends ConsumerWidget {
             Card(
               color: AppColors.primaryLight,
               child: InkWell(
-                onTap: () => copyToClipboard(
-                  context,
-                  appState.childInviteCode,
-                  'Child Invite',
-                ),
+                onTap: appState.childInviteCode.trim().isEmpty
+                    ? null
+                    : () => copyToClipboard(
+                        context,
+                        appState.childInviteCode,
+                        'Child Invite',
+                      ),
                 borderRadius: BorderRadius.circular(16),
                 child: Padding(
                   padding: const EdgeInsets.all(16),
@@ -199,7 +201,9 @@ class SettingsScreen extends ConsumerWidget {
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              appState.childInviteCode,
+                              appState.childInviteCode.trim().isEmpty
+                                  ? 'Code unavailable'
+                                  : appState.childInviteCode,
                               style: const TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.w900,
@@ -211,11 +215,13 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                       ),
                       IconButton(
-                        onPressed: () => copyToClipboard(
-                          context,
-                          appState.childInviteCode,
-                          'Child Invite',
-                        ),
+                        onPressed: appState.childInviteCode.trim().isEmpty
+                            ? null
+                            : () => copyToClipboard(
+                                context,
+                                appState.childInviteCode,
+                                'Child Invite',
+                              ),
                         icon: const Icon(
                           Icons.copy_rounded,
                           color: AppColors.primary,
@@ -235,11 +241,13 @@ class SettingsScreen extends ConsumerWidget {
                 side: const BorderSide(color: AppColors.border, width: 1.5),
               ),
               child: InkWell(
-                onTap: () => copyToClipboard(
-                  context,
-                  appState.parentInviteCode,
-                  'Co-Parent Invite',
-                ),
+                onTap: appState.parentInviteCode.trim().isEmpty
+                    ? null
+                    : () => copyToClipboard(
+                        context,
+                        appState.parentInviteCode,
+                        'Co-Parent Invite',
+                      ),
                 borderRadius: BorderRadius.circular(16),
                 child: Padding(
                   padding: const EdgeInsets.all(14),
@@ -259,7 +267,9 @@ class SettingsScreen extends ConsumerWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              appState.parentInviteCode,
+                              appState.parentInviteCode.trim().isEmpty
+                                  ? 'Code unavailable'
+                                  : appState.parentInviteCode,
                               style: const TextStyle(
                                 fontSize: 18,
                                 fontWeight: FontWeight.w800,
@@ -271,11 +281,13 @@ class SettingsScreen extends ConsumerWidget {
                         ),
                       ),
                       IconButton(
-                        onPressed: () => copyToClipboard(
-                          context,
-                          appState.parentInviteCode,
-                          'Co-Parent Invite',
-                        ),
+                        onPressed: appState.parentInviteCode.trim().isEmpty
+                            ? null
+                            : () => copyToClipboard(
+                                context,
+                                appState.parentInviteCode,
+                                'Co-Parent Invite',
+                              ),
                         icon: const Icon(
                           Icons.copy_rounded,
                           color: AppColors.textSecondary,
@@ -449,12 +461,14 @@ class SettingsScreen extends ConsumerWidget {
                               style: const TextStyle(fontSize: 11),
                             ),
                             const SizedBox(width: 3),
-                            Text(
-                              activity.label,
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: activity.color,
+                            Flexible(
+                              child: Text(
+                                activity.label,
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: activity.color,
+                                ),
                               ),
                             ),
                           ],
