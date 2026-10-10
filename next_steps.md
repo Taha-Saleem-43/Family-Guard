@@ -16,13 +16,13 @@ Ship a reliable, appealing Android family-location app on Google Play. Keep the 
 ## Exact Git state
 
 - Workspace: `D:\Flutter_Projects\Others\Family-Guard`.
-- Current branch: `taha/map-actions-cleanup`.
+- Current branch: `taha/docs-cleanup` (documentation consolidation), based on `taha/map-actions-cleanup`.
 - Latest app commit: `1ccc451` — simplify map credits and Google Maps directions action.
 - Remote main observed locally: `ebc00d4` — UI accessibility refinements.
 - Current branch contains the newer Workers backend, onboarding and map work. Integrate the final verified head once; do not independently merge every stacked predecessor branch.
 - Latest CI for `1ccc451`: **Android, Flutter and Firebase/backend jobs all passed**.
 - CI evidence: https://github.com/Taha-Saleem-43/Family-Guard/actions/runs/38085743389
-- This handoff file is documentation added after that tested app commit.
+- Documentation-only commits follow that tested app commit. `next_steps.md` is the single maintained guide; the root README links here.
 
 ## Implemented
 
@@ -120,7 +120,7 @@ Do not silently trigger emergencies on real family accounts. Use isolated consen
 
 ### 6. Documentation and integration
 
-- Update `RELEASE_STATUS.md` and `docs/RELEASE_RUNBOOK.md`: sections still describe undeployed paid Firebase Functions/TTL and pre-device-test status. Use this handoff and `workers/README.md` for the newer free-backend state.
+- Keep this file current. Redundant feature/release reports and obsolete paid-backend deployment instructions have been removed. Original owner-provided Firebase/design notes remain historical references, not the active deployment guide.
 - After final feature fixes, require green CI and integrate the verified stacked head into main.
 - Keep unit/widget, real SQLite, backend domain, Firestore rules, REST adapter and Worker runtime tests in CI.
 
@@ -159,7 +159,7 @@ Run durable SQLite tests from `tool/sqlite_tests`. Backend and Worker commands a
 - Bundled video: `assets/videos/family_intro.mp4` (six seconds, approximately 41 KB).
 - Icon preview: `assets/branding/icon_preview.png`.
 - Reproducible media generator: `scripts/generate_intro_assets.py` with project-local requirements.
-- Previous regression evidence: `build/regression-validation/REPORT.md` and `WORKERS_REPORT.md`; older sections are historical, not current status.
+- Older standalone regression reports were removed; current verification results and remaining acceptance limits are summarized here.
 - Ignored device logs/screenshots may contain private family data; never commit them.
 
 ## Official references
@@ -172,4 +172,41 @@ Run durable SQLite tests from `tool/sqlite_tests`. Backend and Worker commands a
 
 ## Suggested first instruction in the next chat
 
-"Read next_steps.md and inspect the current Git state. Continue the remaining engineering work on taha feature branches, starting with password recovery, offline fonts, map attribution/cache review and release-document corrections. Keep dependencies local, preserve the free backend, test and push completed work. Do not reset live data or send real emergency alerts. Then proceed to controlled device acceptance and performance measurements when phones are connected."
+"Read next_steps.md and inspect the current Git state. Continue the remaining engineering work on taha feature branches, starting with password recovery, offline fonts, map attribution/cache review. Keep dependencies local, preserve the free backend, test and push completed work. Do not reset live data or send real emergency alerts. Then proceed to controlled device acceptance and performance measurements when phones are connected."
+
+## Repository structure and maintenance notes
+
+- `lib/core/`: shared models, services, providers, privacy and theme.
+- `lib/features/`: auth, onboarding, map, history, places, alerts, SOS, settings and home.
+- `functions/features/`: backend business logic reused by the Worker; keep this code even though paid Cloud Functions are not deployed.
+- `workers/src/`: free backend transport, authentication and Firestore REST adapter.
+- `test/`, `functions/test/`, `workers/test/`, `tool/sqlite_tests/`: regression coverage.
+- `scripts/`: local verification, native alignment checks and asset generation.
+- `.github/workflows/`: automated verification; the PR template is workflow metadata, not a separate reading guide.
+
+Auth is the identity authority. Preferences cache display data only. Membership, roles, SOS and trusted ingestion remain server-owned. Preserve injectable services and clocks, account/circle fencing, original capture timestamps, idempotent retries and the shared foreground/headless upload policy.
+
+Consent is scoped to the account, sign-in and circle. Parents avoid child location prompts. Children cannot hand off another member's location. Parent history is restricted to the recorded circle; never infer legacy point provenance from current membership. A dedicated parent handoff/leave-circle flow is still a product gap; existing surviving circles with no parent enter `requiresParent` recovery.
+
+The Worker supports the current private subcollections and stores deletion cleanup stages. Extend deletion steps/tests whenever adding new private data. Minute recovery sweeps resume signed jobs; half-hour sweeps prune expired records in bounded batches. Empty sweeps still consume Firestore reads, and expired-history cleanup is bounded (previous configured maximum: 9,600 points/day). Measure actual capacity before launch.
+
+For authorized deployments only, use the existing local Wrangler from `workers/` and Spark-compatible Firebase deployment from the root. Do not reprovision credentials:
+
+```sh
+# From workers/, with the local cache/auth configuration described above:
+node node_modules/wrangler/bin/wrangler.js deploy --config wrangler.jsonc
+
+# From the repository root:
+node node_modules/firebase-tools/lib/bin/firebase.js deploy --project familyguard-v2-app --config firebase.spark.json --only firestore
+```
+
+Preserve disclosure, session boundaries and retry behavior when changing UI. Missing/stale positions and unknown battery/activity must remain honest; FCM service acceptance must never be described as device receipt.
+
+Regenerate original introduction/icon assets using the project virtual environment:
+
+```powershell
+.venv/Scripts/python.exe -m pip install --cache-dir .cache/pip -r scripts/intro-assets-requirements.txt
+.venv/Scripts/python.exe scripts/generate_intro_assets.py
+```
+
+The introduction is silent, 720 × 576 H.264 at 24 fps. Its poster supports reduced motion and video failure. Pause playback in the background and dispose the player when leaving onboarding. Demo interactions must never start real tracking or send alerts.
