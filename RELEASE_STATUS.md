@@ -31,14 +31,14 @@ History readers now query Firestore timestamps and parents filter by the recorde
 
 ## Remaining release gates
 
-- Production Firebase/Play Console access, approved permanent package ID, release signing, app-check registration and deployment review.
-- SOS push staging/device verification, queue monitoring and load benchmarks; durable offline SOS state restoration.
-- Native geofence transition processing and alerts; do not advertise it as working until tested end to end.
-- Durable offline upload storage, retry/backoff and cross-isolate/device ordering reconciliation, accurate connectivity/freshness reporting and adaptive battery tuning. Current serialization is process-local and does not establish durable recovery by itself.
-- Legacy history migration UX and performance benchmarks for very large loaded routes.
-- Account-deletion staging/device verification, public web deletion-request URL and operational monitoring; membership removal and parent handoff flows.
-- Android target API/release identity/signing checks, supported-device background/boot/permission-revocation tests and battery benchmarks.
-- Privacy policy, prominent background-location disclosure, data-safety declaration, store assets and closed testing.
+The engineering baseline, UI refinements and Google Maps handoff are integrated into main. Durable location/SOS recovery and native geofence processing are implemented; production readiness still depends on the following acceptance work. The authoritative checklist is [the release runbook](docs/RELEASE_RUNBOOK.md).
+
+- Play Console access, permanent Android package ID, release signing and production Firebase/App Check configuration.
+- Reviewed staging deployment, indexes/TTL policies and any legacy-data migration.
+- Signed-build device testing: background tracking, reboot, permission changes, offline recovery, geofences, SOS delivery and account deletion.
+- Battery/accuracy measurements, staging load benchmarks, queue monitoring and budgets.
+- Owner-signed AAB verification, including a real 16 KB Android runtime.
+- Public privacy policy and deletion-request page, Data safety declarations, background-location review, store assets and applicable closed testing.
 
 New personal Play accounts currently require at least 12 opted-in testers continuously for 14 days before applying for production access. See [Google's testing requirements](https://support.google.com/googleplay/android-developer/answer/14151465). A closed-test build is the next-week target; public availability depends on account eligibility and review.
 

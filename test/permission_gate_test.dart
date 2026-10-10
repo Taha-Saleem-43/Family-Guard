@@ -59,7 +59,7 @@ void main() {
       final service = _Permissions();
       await tester.pumpWidget(gate(UserRole.child, service));
       await tester.pump();
-      await tester.tap(find.widgetWithText(ElevatedButton, 'Continue'));
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Allow location'));
       await tester.pumpWidget(const SizedBox());
       service.foreground.complete(PermissionStatus.granted);
       await tester.pump();

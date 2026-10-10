@@ -6,6 +6,7 @@ import '../../../core/models/permission_summary.dart';
 import '../../../core/providers/app_state_provider.dart';
 import '../../../core/services/permission_service.dart';
 import '../../../core/theme/app_colors.dart';
+import '../../../core/presentation/setup_scroll_view.dart';
 
 // ── Internal sub-step enum ───────────────────────────────────────────────────
 
@@ -29,7 +30,8 @@ class PermissionGateScreen extends ConsumerStatefulWidget {
       _PermissionGateScreenState();
 }
 
-class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen> {
+class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen>
+    with WidgetsBindingObserver {
   late final PermissionService _service;
   late final String _initialUid;
   bool get _sharesLocation => widget.role == UserRole.child;
@@ -46,16 +48,66 @@ class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen> {
 
   // Set to true when foreground location is permanently denied.
   bool _fgPermanentlyDenied = false;
+  bool _awaitingSettings = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _service = widget.service ?? PermissionService();
     _initialUid = ref.read(appStateProvider).userId;
     if (_sharesLocation) {
       _checkOem();
     } else {
       _step = _PermStep.notifications;
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _awaitingSettings) {
+      _checkForegroundAfterSettings();
+    }
+  }
+
+  Future<void> _checkForegroundAfterSettings() async {
+    if (!mounted || ref.read(appStateProvider).userId != _initialUid) return;
+    try {
+      final status = await _service.foregroundLocationStatus();
+      if (!mounted || ref.read(appStateProvider).userId != _initialUid) return;
+      if (status.isGranted) {
+        setState(() {
+          _awaitingSettings = false;
+          _fgGranted = true;
+          _fgPermanentlyDenied = false;
+          _step = _PermStep.background;
+        });
+      }
+    } catch (_) {
+      /* Keep the recovery action available. */
+    }
+  }
+
+  Future<void> _openForegroundSettings() async {
+    if (ref.read(appStateProvider).userId != _initialUid) return;
+    _awaitingSettings = true;
+    try {
+      await _service.openSystemAppSettings();
+      await _checkForegroundAfterSettings();
+    } catch (_) {
+      if (mounted && ref.read(appStateProvider).userId == _initialUid) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open settings. Please try again.'),
+          ),
+        );
+      }
     }
   }
 
@@ -171,34 +223,20 @@ class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen> {
       body:
           'FamilyGuard needs to know where you are so family members can find '
           'each other on the map. Select "While using the app" on the next screen.',
-      primaryLabel: 'Continue',
+      primaryLabel: _fgPermanentlyDenied ? 'Open settings' : 'Allow location',
       isLoading: _isLoading,
-      onPrimary: _requestForeground,
+      onPrimary: _fgPermanentlyDenied
+          ? _openForegroundSettings
+          : _requestForeground,
       // Blocking state: shown after a denial
       blocker: _fgPermanentlyDenied
           ? _BlockerBanner(
               message:
                   'Location permission was permanently denied. Please open '
                   'Settings and allow it manually.',
-              onOpenSettings: () async {
-                await _service.openSystemAppSettings();
-                // Re-check after returning from Settings
-                final status = await _service.foregroundLocationStatus();
-                if (status.isGranted && mounted) {
-                  setState(() {
-                    _fgGranted = true;
-                    _fgPermanentlyDenied = false;
-                    _step = _PermStep.background;
-                  });
-                }
-              },
+              onOpenSettings: _openForegroundSettings,
             )
-          : (!_fgGranted &&
-                    !_fgPermanentlyDenied &&
-                    _isLoading == false &&
-                    _step == _PermStep.foreground
-                ? null
-                : null),
+          : null,
     );
   }
 
@@ -215,8 +253,8 @@ class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen> {
           'To track location when the app is closed or the screen is off, '
           'select "Allow all the time" on the next screen. '
           'Without this, tracking pauses when you switch apps.',
-      primaryLabel: 'Continue',
-      secondaryLabel: 'Skip (foreground only)',
+      primaryLabel: 'Allow background location',
+      secondaryLabel: 'Use foreground only',
       isLoading: _isLoading,
       onPrimary: _requestBackground,
       onSecondary: () => setState(() {
@@ -277,122 +315,124 @@ class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen> {
   // ── OEM Auto-start Step (Samsung / Xiaomi only) ────────────────────────────
 
   Widget _buildOemStep() {
-    return Container(
-      key: const ValueKey('perm_oem'),
-      color: AppColors.bg,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 16),
-          // Progress chip
-          _ProgressChip(label: 'One more setting'),
-          const SizedBox(height: 32),
-          // Icon
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF7ED),
-              shape: BoxShape.circle,
+    return SetupScrollView(
+      child: Container(
+        key: const ValueKey('perm_oem'),
+        color: AppColors.bg,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 16),
+            // Progress chip
+            _ProgressChip(label: 'One more setting'),
+            const SizedBox(height: 32),
+            // Icon
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7ED),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.settings_power_rounded,
+                size: 40,
+                color: Color(0xFFF97316),
+              ),
             ),
-            child: const Icon(
-              Icons.settings_power_rounded,
-              size: 40,
-              color: Color(0xFFF97316),
+            const SizedBox(height: 24),
+            const Text(
+              "Let's fix one more setting",
+              style: TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                color: AppColors.textPrimary,
+                height: 1.2,
+              ),
             ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            "Let's fix one more setting",
-            style: TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textPrimary,
-              height: 1.2,
+            const SizedBox(height: 12),
+            const Text(
+              'Your device manufacturer adds an extra battery restriction that '
+              'can stop FamilyGuard from running in the background.\n\n'
+              'On the next screen, find FamilyGuard and enable "Auto-start" '
+              'or "Allow background activity".',
+              style: TextStyle(
+                fontSize: 15,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w500,
+                height: 1.5,
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Your device manufacturer adds an extra battery restriction that '
-            'can stop FamilyGuard from running in the background.\n\n'
-            'On the next screen, find FamilyGuard and enable "Auto-start" '
-            'or "Allow background activity".',
-            style: TextStyle(
-              fontSize: 15,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
-              height: 1.5,
-            ),
-          ),
-          const Spacer(),
-          // Info box
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: const Color(0xFFFFF7ED),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFFED7AA)),
-            ),
-            child: Row(
-              children: const [
-                Icon(
-                  Icons.info_outline_rounded,
-                  color: Color(0xFFF97316),
-                  size: 20,
-                ),
-                SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'This setting is only available on certain devices '
-                    '(Samsung, Xiaomi, etc.).',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Color(0xFF9A3412),
-                      fontWeight: FontWeight.w600,
+            const SizedBox(height: 32),
+            // Info box
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF7ED),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFFED7AA)),
+              ),
+              child: Row(
+                children: const [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    color: Color(0xFFF97316),
+                    size: 20,
+                  ),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      'This setting is only available on certain devices '
+                      '(Samsung, Xiaomi, etc.).',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF9A3412),
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () async {
-                await _service.openSystemAppSettings();
-                if (mounted) setState(() => _step = _PermStep.allSet);
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFF97316),
-                padding: const EdgeInsets.symmetric(vertical: 18),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              child: const Text(
-                'Open settings',
-                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
+                ],
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: TextButton(
-              onPressed: _skipOem,
-              child: const Text(
-                "I'll do this later",
-                style: TextStyle(
-                  fontSize: 15,
-                  color: AppColors.textSecondary,
-                  fontWeight: FontWeight.w700,
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () async {
+                  await _service.openSystemAppSettings();
+                  if (mounted) setState(() => _step = _PermStep.allSet);
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFFF97316),
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: const Text(
+                  'Open settings',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 8),
-        ],
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: TextButton(
+                onPressed: _skipOem,
+                child: const Text(
+                  "I'll do this later",
+                  style: TextStyle(
+                    fontSize: 15,
+                    color: AppColors.textSecondary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
       ),
     );
   }
@@ -407,115 +447,117 @@ class _PermissionGateScreenState extends ConsumerState<PermissionGateScreen> {
       batteryOptimization: _batteryGranted,
     );
 
-    return Container(
-      key: const ValueKey('perm_allset'),
-      color: AppColors.bg,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 24),
-          // Header
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: const BoxDecoration(
-              color: Color(0xFFECFDF5),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.check_circle_rounded,
-              size: 48,
-              color: Color(0xFF10B981),
-            ),
-          ),
-          const SizedBox(height: 24),
-          const Text(
-            "You're all set!",
-            style: TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'FamilyGuard is ready. Here\'s your permission summary:',
-            style: TextStyle(
-              fontSize: 15,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          const SizedBox(height: 24),
-          // Permission summary rows
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Column(
-                children: [
-                  if (_sharesLocation)
-                    _SummaryRow(
-                      icon: Icons.my_location_rounded,
-                      label: 'Location (foreground)',
-                      granted: summary.foregroundLocation,
-                    ),
-                  if (_sharesLocation)
-                    _SummaryRow(
-                      icon: Icons.location_searching_rounded,
-                      label: 'Location (background)',
-                      granted: summary.backgroundLocation,
-                      warnIfMissing: true,
-                    ),
-                  _SummaryRow(
-                    icon: Icons.notifications_active_rounded,
-                    label: 'Notifications',
-                    granted: summary.notifications,
-                  ),
-                  if (_sharesLocation)
-                    _SummaryRow(
-                      icon: Icons.battery_charging_full_rounded,
-                      label: 'Battery optimization',
-                      granted: summary.batteryOptimization,
-                    ),
-                ],
+    return SetupScrollView(
+      child: Container(
+        key: const ValueKey('perm_allset'),
+        color: AppColors.bg,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 24),
+            // Header
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                color: Color(0xFFECFDF5),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.check_circle_rounded,
+                size: 48,
+                color: Color(0xFF10B981),
               ),
             ),
-          ),
-          // Degraded-mode warning (test T2)
-          if (_sharesLocation && summary.isDegraded) ...[
-            const SizedBox(height: 16),
-            _DegradedModeBanner(
-              onFixTap: () async {
-                final status = await _service.requestBackgroundLocation(
-                  foregroundGranted: _fgGranted,
-                );
-                if (mounted) {
-                  setState(() => _bgGranted = status.isGranted);
-                }
-              },
+            const SizedBox(height: 24),
+            const Text(
+              "You're all set!",
+              style: TextStyle(
+                fontSize: 32,
+                fontWeight: FontWeight.w900,
+                color: AppColors.textPrimary,
+              ),
             ),
-          ],
-          const Spacer(),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _finishOnboarding,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                padding: const EdgeInsets.symmetric(vertical: 18),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
+            const SizedBox(height: 8),
+            const Text(
+              'FamilyGuard is ready. Here\'s your permission summary:',
+              style: TextStyle(
+                fontSize: 15,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 24),
+            // Permission summary rows
+            Card(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Column(
+                  children: [
+                    if (_sharesLocation)
+                      _SummaryRow(
+                        icon: Icons.my_location_rounded,
+                        label: 'Location (foreground)',
+                        granted: summary.foregroundLocation,
+                      ),
+                    if (_sharesLocation)
+                      _SummaryRow(
+                        icon: Icons.location_searching_rounded,
+                        label: 'Location (background)',
+                        granted: summary.backgroundLocation,
+                        warnIfMissing: true,
+                      ),
+                    _SummaryRow(
+                      icon: Icons.notifications_active_rounded,
+                      label: 'Notifications',
+                      granted: summary.notifications,
+                    ),
+                    if (_sharesLocation)
+                      _SummaryRow(
+                        icon: Icons.battery_charging_full_rounded,
+                        label: 'Battery optimization',
+                        granted: summary.batteryOptimization,
+                      ),
+                  ],
                 ),
-                elevation: 2,
-              ),
-              child: const Text(
-                'Open FamilyGuard',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
               ),
             ),
-          ),
-          const SizedBox(height: 16),
-        ],
+            // Degraded-mode warning (test T2)
+            if (_sharesLocation && summary.isDegraded) ...[
+              const SizedBox(height: 16),
+              _DegradedModeBanner(
+                onFixTap: () async {
+                  final status = await _service.requestBackgroundLocation(
+                    foregroundGranted: _fgGranted,
+                  );
+                  if (mounted) {
+                    setState(() => _bgGranted = status.isGranted);
+                  }
+                },
+              ),
+            ],
+            const SizedBox(height: 32),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: _finishOnboarding,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  elevation: 2,
+                ),
+                child: const Text(
+                  'Open FamilyGuard',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }
@@ -578,94 +620,96 @@ class _PrePromptCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: AppColors.bg,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 16),
-          _ProgressChip(label: stepNumber),
-          const SizedBox(height: 32),
-          // Icon circle
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.12),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, size: 40, color: iconColor),
-          ),
-          const SizedBox(height: 24),
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 28,
-              fontWeight: FontWeight.w900,
-              color: AppColors.textPrimary,
-              height: 1.2,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            body,
-            style: const TextStyle(
-              fontSize: 15,
-              color: AppColors.textSecondary,
-              fontWeight: FontWeight.w500,
-              height: 1.5,
-            ),
-          ),
-          if (blocker != null) ...[const SizedBox(height: 16), blocker!],
-          const Spacer(),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: isLoading ? null : onPrimary,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                padding: const EdgeInsets.symmetric(vertical: 18),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
+    return SetupScrollView(
+      child: Container(
+        color: AppColors.bg,
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 16),
+            _ProgressChip(label: stepNumber),
+            const SizedBox(height: 32),
+            // Icon circle
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
               ),
-              child: isLoading
-                  ? const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 2.5,
-                      ),
-                    )
-                  : Text(
-                      primaryLabel,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
+              child: Icon(icon, size: 40, color: iconColor),
             ),
-          ),
-          if (secondaryLabel != null) ...[
-            const SizedBox(height: 10),
+            const SizedBox(height: 24),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.w900,
+                color: AppColors.textPrimary,
+                height: 1.2,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              body,
+              style: const TextStyle(
+                fontSize: 15,
+                color: AppColors.textSecondary,
+                fontWeight: FontWeight.w500,
+                height: 1.5,
+              ),
+            ),
+            if (blocker != null) ...[const SizedBox(height: 16), blocker!],
+            const SizedBox(height: 32),
             SizedBox(
               width: double.infinity,
-              child: TextButton(
-                onPressed: isLoading ? null : onSecondary,
-                child: Text(
-                  secondaryLabel!,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    color: AppColors.textSecondary,
-                    fontWeight: FontWeight.w700,
+              child: ElevatedButton(
+                onPressed: isLoading ? null : onPrimary,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                ),
+                child: isLoading
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2.5,
+                        ),
+                      )
+                    : Text(
+                        primaryLabel,
+                        style: const TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+              ),
+            ),
+            if (secondaryLabel != null) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: isLoading ? null : onSecondary,
+                  child: Text(
+                    secondaryLabel!,
+                    style: const TextStyle(
+                      fontSize: 15,
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ),
-            ),
+            ],
+            const SizedBox(height: 8),
           ],
-          const SizedBox(height: 8),
-        ],
+        ),
       ),
     );
   }
@@ -694,12 +738,14 @@ class _BlockerBanner extends StatelessWidget {
             children: const [
               Icon(Icons.error_rounded, color: AppColors.sosRed, size: 18),
               SizedBox(width: 8),
-              Text(
-                'Permission required',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.sosRed,
+              Expanded(
+                child: Text(
+                  'Permission required',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    color: AppColors.sosRed,
+                  ),
                 ),
               ),
             ],
@@ -757,12 +803,14 @@ class _DegradedModeBanner extends StatelessWidget {
                 size: 18,
               ),
               SizedBox(width: 8),
-              Text(
-                'Foreground-only mode',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF92400E),
+              Expanded(
+                child: Text(
+                  'Foreground-only mode',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF92400E),
+                  ),
                 ),
               ),
             ],
