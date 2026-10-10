@@ -54,7 +54,7 @@ class _InteractiveIntroState extends State<InteractiveIntro> {
                 Row(
                   children: [
                     Image.asset(
-                      'assets/branding/icon.png',
+                      'assets/branding/icon_preview.png',
                       width: 38,
                       height: 38,
                     ),
