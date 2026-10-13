@@ -16,7 +16,7 @@ Ship a reliable, appealing Android family-location app on Google Play. Keep the 
 ## Exact Git state
 
 - Workspace: `D:\Flutter_Projects\Others\Family-Guard`.
-- Current branch: `taha/history-place-refinements`, based on `taha/docs-cleanup`.
+- Current branch: `taha/password-recovery`, based on `taha/history-place-refinements`.
 - Latest app commit: `1ccc451` — simplify map credits and Google Maps directions action.
 - Remote main observed locally: `ebc00d4` — UI accessibility refinements.
 - Current branch contains the newer Workers backend, onboarding and map work. Integrate the final verified head once; do not independently merge every stacked predecessor branch.
@@ -61,9 +61,11 @@ Implementation and emulator tests do not establish real-phone background reliabi
 
 ## Remaining work, in priority order
 
+Password recovery update (13 October 2026): sign-in now offers a separate scrollable reset screen with email prefilling/validation, duplicate-request protection, accessible status announcements, recoverable errors and generic account-existence wording. It uses the existing Firebase Auth email reset API; no dependencies or paid backend services were added. Full Flutter suite: 163 passed; additional reset service regression: 1 passed. Actual email delivery and phone/TalkBack acceptance remain pending. ADB reported no attached devices.
+
 ### 1. Finish practical app gaps
 
-- Add an accessible **Forgot password** flow; no password-reset UI/service was found in the audit.
+- Accessible **Forgot password** flow is implemented on `taha/password-recovery`; verify actual email receipt/reset with an isolated test account before release.
 - Bundle the existing Nunito font assets or choose an offline system-font strategy. Current theme uses Google Fonts runtime fetching.
 - Apply compact visible OpenStreetMap attribution to history and place-picker maps as well as the main map.
 - Verify the actual tile caching behavior against the OSM usage policy. No explicit persistent tile-cache configuration was found in the app map widgets; do not claim caching compliance without checking the installed provider.

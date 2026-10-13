@@ -10,6 +10,7 @@ import '../../auth/providers/auth_providers.dart';
 import '../../settings/presentation/account_deletion_control.dart';
 import 'permission_gate_screen.dart';
 import 'interactive_intro.dart';
+import '../../auth/presentation/password_reset_screen.dart';
 
 enum OnboardingStep {
   intro,
@@ -447,6 +448,22 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   ),
                 ),
                 const SizedBox(height: 20),
+                if (!_isSignUp)
+                  TextButton(
+                    onPressed: _isLoading
+                        ? null
+                        : () => Navigator.of(context).push(
+                            MaterialPageRoute<void>(
+                              builder: (_) => PasswordResetScreen(
+                                initialEmail: _emailController.text,
+                                sendReset: ref
+                                    .read(authServiceProvider)
+                                    .sendPasswordReset,
+                              ),
+                            ),
+                          ),
+                    child: const Text('Forgot password?'),
+                  ),
                 Wrap(
                   alignment: WrapAlignment.center,
                   crossAxisAlignment: WrapCrossAlignment.center,

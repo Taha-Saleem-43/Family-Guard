@@ -31,6 +31,19 @@ class AuthService {
   User? get currentUser => _auth.currentUser;
   Stream<User?> get authStateChanges => _auth.authStateChanges();
 
+  Future<void> sendPasswordReset(String email) async {
+    final address = email.trim();
+    if (!RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(address)) {
+      throw ArgumentError('Enter a valid email address.');
+    }
+    try {
+      await _auth.sendPasswordResetEmail(email: address);
+    } on FirebaseAuthException catch (error) {
+      // Preserve the same response whether or not this account exists.
+      if (error.code != 'user-not-found') rethrow;
+    }
+  }
+
   Future<UserAccountModel> signUp({
     required String email,
     required String password,
