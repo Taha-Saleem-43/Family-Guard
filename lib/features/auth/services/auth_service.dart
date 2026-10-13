@@ -11,6 +11,8 @@ import '../domain/circle_model.dart';
 import '../domain/user_account_model.dart';
 
 import '../../../core/services/backend_functions.dart';
+import '../../../core/services/map_tile_cache.dart';
+import 'package:flutter/painting.dart';
 
 class AuthService {
   final FirebaseAuth _auth;
@@ -223,6 +225,9 @@ class AuthService {
     }
     await LocationService.clearDebugLog();
     await UserSessionService.deleteUserSession(uid);
+    await MapTileCache.shared.clear();
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
     if (!nativeComplete) {
       throw StateError('Native tracking data cleanup was incomplete.');
     }

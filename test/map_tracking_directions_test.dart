@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:family_guard/core/models/member.dart';
 import 'package:family_guard/core/models/movement_activity.dart';
@@ -18,10 +17,6 @@ import 'package:family_guard/features/map/presentation/widgets/member_detail_she
 void main() {
   setUpAll(() {
     HttpOverrides.global = _MockHttpOverrides();
-  });
-
-  setUp(() {
-    GoogleFonts.config.allowRuntimeFetching = false;
   });
 
   final testParentAndChild = [

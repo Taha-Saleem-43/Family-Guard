@@ -5,7 +5,6 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:family_guard/core/models/place.dart';
 import 'package:family_guard/core/providers/app_state_provider.dart';
 import 'package:family_guard/core/theme/app_theme.dart';
@@ -33,8 +32,6 @@ class _OfflinePlaces extends PlacesController {
 }
 
 void main() {
-  setUp(() => GoogleFonts.config.allowRuntimeFetching = false);
-
   Future<void> showPlaces(
     WidgetTester tester,
     UserRole role, {
@@ -191,7 +188,7 @@ void main() {
           theme.textTheme.labelMedium,
           theme.textTheme.labelSmall,
           theme.appBarTheme.titleTextStyle,
-          GoogleFonts.nunito(fontWeight: FontWeight.w800),
+          const TextStyle(fontFamily: 'Nunito', fontWeight: FontWeight.w800),
         ])
           if (style?.fontFamily != null) style!.fontFamily!,
       };

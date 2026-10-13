@@ -14,6 +14,7 @@ import 'permission_status_card.dart';
 import 'invite_rotation_control.dart';
 import 'account_deletion_control.dart';
 import 'push_status_card.dart';
+import '../../../core/services/map_tile_cache.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -330,6 +331,43 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 24),
+          ListTile(
+            leading: const Icon(Icons.layers_clear_outlined),
+            title: const Text('Clear map cache'),
+            subtitle: const Text(
+              'Remove stored map tiles for previously viewed areas.',
+            ),
+            onTap: () async {
+              var cleared = false;
+              try {
+                await MapTileCache.shared.clear();
+                PaintingBinding.instance.imageCache.clear();
+                PaintingBinding.instance.imageCache.clearLiveImages();
+                cleared = true;
+              } catch (_) {
+                // Explain a storage failure without logging viewed areas.
+              }
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      cleared
+                          ? 'Map cache cleared.'
+                          : 'Could not clear the map cache. Please try again.',
+                    ),
+                  ),
+                );
+              }
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.description_outlined),
+            title: const Text('Open-source licenses'),
+            onTap: () => showLicensePage(
+              context: context,
+              applicationName: 'FamilyGuard',
+            ),
+          ),
 
           // Sign Out / Reset
           const AccountDeletionControl(),

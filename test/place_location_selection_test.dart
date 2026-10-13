@@ -11,6 +11,58 @@ import 'package:latlong2/latlong.dart';
 
 void main() {
   testWidgets(
+    'place editor fits large text and keyboard and permits button-based pin adjustment',
+    (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            appStateProvider.overrideWith(
+              (ref) => AppStateNotifier()..setRole(UserRole.parent),
+            ),
+            memberStateProvider.overrideWith(
+              (ref) => MemberStateNotifier(ref)..state = [],
+            ),
+          ],
+          child: MaterialApp(
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: const TextScaler.linear(2),
+                viewInsets: const EdgeInsets.only(bottom: 240),
+              ),
+              child: child!,
+            ),
+            home: const Scaffold(
+              body: AddEditPlaceDialog(initialLocation: LatLng(34, 74)),
+            ),
+          ),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tester.takeException(), isNull);
+      final move = find.byTooltip('Move pin 25 meters north');
+      await tester.ensureVisible(move);
+      await tester.tap(move);
+      await tester.pump();
+      final point = tester
+          .widget<MarkerLayer>(find.byType(MarkerLayer))
+          .markers
+          .single
+          .point;
+      expect(point.latitude, greaterThan(34));
+      expect(
+        const Distance().as(LengthUnit.Meter, const LatLng(34, 74), point),
+        closeTo(25, 1),
+      );
+      expect(find.text('© OpenStreetMap contributors'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+  testWidgets(
     'place picker explicitly selects fresh member and recenters after manual pin movement',
     (tester) async {
       final fresh = Member(

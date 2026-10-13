@@ -1,18 +1,30 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'app_colors.dart';
 
 class AppTheme {
   AppTheme._();
+  static bool _licenseRegistered = false;
 
   static ThemeData light() {
-    final textTheme = GoogleFonts.nunitoTextTheme().apply(
+    if (!_licenseRegistered) {
+      _licenseRegistered = true;
+      LicenseRegistry.addLicense(() async* {
+        yield LicenseEntryWithLineBreaks([
+          'Nunito',
+        ], await rootBundle.loadString('assets/fonts/OFL.txt'));
+      });
+    }
+    final textTheme = ThemeData.light().textTheme.apply(
+      fontFamily: 'Nunito',
       bodyColor: AppColors.textPrimary,
       displayColor: AppColors.textPrimary,
     );
 
     return ThemeData(
       useMaterial3: true,
+      fontFamily: 'Nunito',
       scaffoldBackgroundColor: AppColors.bg,
       colorScheme: const ColorScheme.light(
         primary: AppColors.primary,
@@ -91,7 +103,8 @@ class AppTheme {
             borderRadius: BorderRadius.circular(16),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-          textStyle: GoogleFonts.nunito(
+          textStyle: const TextStyle(
+            fontFamily: 'Nunito',
             fontWeight: FontWeight.w800,
             fontSize: 16,
           ),
@@ -103,7 +116,8 @@ class AppTheme {
         centerTitle: false,
         scrolledUnderElevation: 0,
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
-        titleTextStyle: GoogleFonts.nunito(
+        titleTextStyle: const TextStyle(
+          fontFamily: 'Nunito',
           color: AppColors.textPrimary,
           fontSize: 20,
           fontWeight: FontWeight.w900,

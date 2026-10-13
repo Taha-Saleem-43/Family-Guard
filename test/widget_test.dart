@@ -7,7 +7,6 @@
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 import 'package:family_guard/main.dart';
 import 'package:family_guard/core/providers/app_state_provider.dart';
@@ -19,10 +18,6 @@ class _BlockedAccount extends AppStateNotifier {
 }
 
 void main() {
-  setUp(() {
-    GoogleFonts.config.allowRuntimeFetching = false;
-  });
-
   testWidgets('FamilyGuardApp loads smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(const ProviderScope(child: FamilyGuardApp()));
 

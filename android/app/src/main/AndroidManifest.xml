@@ -21,7 +21,7 @@
 
 
     <application
-        android:label="family_guard"
+        android:label="FamilyGuard"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"

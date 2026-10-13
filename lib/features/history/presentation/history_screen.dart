@@ -9,6 +9,8 @@ import '../../../core/providers/member_status_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/presentation/screen_header.dart';
 import '../providers/history_provider.dart';
+import '../../../core/presentation/map_attribution.dart';
+import '../../../core/presentation/family_tile_layer.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
   final TileProvider? tileProvider;
@@ -59,8 +61,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     builder: (context, constraints) => ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       children: [
-        SizedBox(
-          height: constraints.maxHeight,
+        ConstrainedBox(
+          constraints: BoxConstraints(minHeight: constraints.maxHeight),
           child: Center(child: child),
         ),
       ],
@@ -254,12 +256,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                           ),
                         ),
                         children: [
-                          TileLayer(
-                            tileProvider: widget.tileProvider,
-                            urlTemplate:
-                                'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                            userAgentPackageName: 'com.familyguard.app',
-                          ),
+                          FamilyTileLayer(tileProvider: widget.tileProvider),
                           PolylineLayer(
                             polylines: [
                               Polyline(
@@ -323,6 +320,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                     Positioned(
                       top: 12,
                       left: 12,
+                      right: 12,
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 10,
@@ -346,16 +344,18 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                               style: const TextStyle(fontSize: 14),
                             ),
                             const SizedBox(width: 6),
-                            Text(
-                              history.isLoading
-                                  ? 'Loading history…'
-                                  : history.hasError
-                                  ? 'History unavailable'
-                                  : '${timelineItems.length} loaded event(s)',
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w800,
-                                color: AppColors.textPrimary,
+                            Expanded(
+                              child: Text(
+                                history.isLoading
+                                    ? 'Loading history…'
+                                    : history.hasError
+                                    ? 'History unavailable'
+                                    : '${timelineItems.length} loaded event(s)',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.textPrimary,
+                                ),
                               ),
                             ),
                           ],
@@ -363,44 +363,28 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                       ),
                     ),
 
-                    // 30-Day Auto Retention Badge
-                    Positioned(
-                      bottom: 10,
-                      right: 12,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.teal.withValues(alpha: 0.9),
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.shield_outlined,
-                              size: 12,
-                              color: Colors.white,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '30-day history window',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
+                    if (polylinePoints.isNotEmpty)
+                      const Positioned(
+                        left: 4,
+                        right: 4,
+                        bottom: 2,
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: MapAttribution(),
                         ),
                       ),
-                    ),
                   ],
                 ),
               ),
             ),
 
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                '30-day history window',
+                style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+              ),
+            ),
             if (ref.watch(selectedHistoryTimelineIdProvider) != null)
               Align(
                 alignment: Alignment.centerRight,

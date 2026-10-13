@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../../core/presentation/map_attribution.dart';
+import '../../../core/presentation/family_tile_layer.dart';
 import '../../../core/presentation/member_activity_status.dart';
 import '../../../core/models/member.dart';
 import '../../../core/models/movement_activity.dart';
@@ -85,10 +86,7 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             ),
             children: [
               // Zero-API-Key TileLayer from OpenStreetMap
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.familyguard.app',
-              ),
+              const FamilyTileLayer(),
 
               // Reported horizontal uncertainty, not a guaranteed boundary.
               CircleLayer(
@@ -291,27 +289,10 @@ class _MapScreenState extends ConsumerState<MapScreen> {
             bottom: isParent
                 ? (constraints.maxHeight * 0.42).clamp(140.0, 260.0) + 2
                 : 2,
-            child: Material(
-              color: Colors.white.withValues(alpha: 0.9),
-              child: InkWell(
-                onTap: () async {
-                  await launchUrl(
-                    Uri.parse('https://www.openstreetmap.org/copyright'),
-                    mode: LaunchMode.externalApplication,
-                  );
-                },
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 4),
-                  child: Text(
-                    '© OpenStreetMap contributors',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: AppColors.textSecondary,
-                      decoration: TextDecoration.underline,
-                    ),
-                  ),
-                ),
-              ),
+            left: 6,
+            child: const Align(
+              alignment: Alignment.centerRight,
+              child: MapAttribution(),
             ),
           ),
 

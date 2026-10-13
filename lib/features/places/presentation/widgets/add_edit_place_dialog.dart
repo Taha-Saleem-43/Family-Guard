@@ -10,6 +10,8 @@ import '../../../../core/services/navigation_service.dart';
 import '../../../../core/services/member_profile_decoder.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../providers/places_provider.dart';
+import '../../../../core/presentation/map_attribution.dart';
+import '../../../../core/presentation/family_tile_layer.dart';
 
 class AddEditPlaceDialog extends ConsumerStatefulWidget {
   final Place? existingPlace;
@@ -125,7 +127,19 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
     _mapController.move(_selectedLocation, 16);
   }
 
+  void _movePin(double bearing) {
+    setState(() {
+      _selectedLocation = const Distance().offset(
+        _selectedLocation,
+        25,
+        bearing,
+      );
+    });
+    _mapController.move(_selectedLocation, _mapController.camera.zoom);
+  }
+
   Future<void> _handleSave() async {
+    if (_isSaving) return;
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);
@@ -177,7 +191,9 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error saving place: $e'),
+            content: const Text(
+              'Could not save this place. Check your connection and try again.',
+            ),
             backgroundColor: AppColors.sosRed,
           ),
         );
@@ -228,15 +244,18 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    isEdit ? 'Edit Saved Place' : 'Add Saved Place',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w900,
-                      color: AppColors.textPrimary,
+                  Expanded(
+                    child: Text(
+                      isEdit ? 'Edit Saved Place' : 'Add Saved Place',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        color: AppColors.textPrimary,
+                      ),
                     ),
                   ),
                   IconButton(
+                    tooltip: 'Close place editor',
                     onPressed: () => Navigator.pop(context),
                     icon: const Icon(
                       Icons.close_rounded,
@@ -340,44 +359,58 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                 ),
               ),
               const SizedBox(height: 6),
-              Row(
-                children: _colorOptions.map((c) {
-                  final isSelected = _selectedColor.toARGB32() == c.toARGB32();
-                  return GestureDetector(
-                    onTap: () => setState(() => _selectedColor = c),
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 12),
-                      width: 32,
-                      height: 32,
-                      decoration: BoxDecoration(
-                        color: c,
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: isSelected
-                              ? Colors.black87
-                              : Colors.transparent,
-                          width: 2.5,
-                        ),
-                        boxShadow: isSelected
-                            ? [
-                                BoxShadow(
-                                  color: c.withValues(alpha: 0.4),
-                                  blurRadius: 8,
-                                  spreadRadius: 2,
+              Wrap(
+                children: List.generate(_colorOptions.length, (index) {
+                  final color = _colorOptions[index];
+                  final selected =
+                      _selectedColor.toARGB32() == color.toARGB32();
+                  const names = [
+                    'Teal',
+                    'Blue',
+                    'Purple',
+                    'Orange',
+                    'Red',
+                    'Green',
+                  ];
+                  return Semantics(
+                    button: true,
+                    selected: selected,
+                    label: '${names[index]} place color',
+                    child: Tooltip(
+                      message: names[index],
+                      child: InkWell(
+                        onTap: () => setState(() => _selectedColor = color),
+                        child: SizedBox(
+                          width: 48,
+                          height: 48,
+                          child: Center(
+                            child: Container(
+                              width: 32,
+                              height: 32,
+                              decoration: BoxDecoration(
+                                color: color,
+                                shape: BoxShape.circle,
+                                border: Border.all(
+                                  color: selected
+                                      ? Colors.black87
+                                      : Colors.transparent,
+                                  width: 2.5,
                                 ),
-                              ]
-                            : null,
+                              ),
+                              child: selected
+                                  ? const Icon(
+                                      Icons.check,
+                                      color: Colors.white,
+                                      size: 20,
+                                    )
+                                  : null,
+                            ),
+                          ),
+                        ),
                       ),
-                      child: isSelected
-                          ? const Icon(
-                              Icons.check_rounded,
-                              color: Colors.white,
-                              size: 18,
-                            )
-                          : null,
                     ),
                   );
-                }).toList(),
+                }),
               ),
               const SizedBox(height: 16),
 
@@ -437,8 +470,9 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
               ),
 
               // Interactive OpenStreetMap Picker with Geofence Radius Overlay
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Wrap(
+                spacing: 12,
+                runSpacing: 4,
                 children: [
                   const Text(
                     'Set Location on Map',
@@ -473,11 +507,7 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                       },
                     ),
                     children: [
-                      TileLayer(
-                        urlTemplate:
-                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                        userAgentPackageName: 'com.familyguard.app',
-                      ),
+                      const FamilyTileLayer(),
                       // Geofence Radius Circle Preview
                       CircleLayer(
                         circles: [
@@ -518,8 +548,42 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                           ),
                         ],
                       ),
+                      const Align(
+                        alignment: Alignment.bottomRight,
+                        child: MapAttribution(),
+                      ),
                     ],
                   ),
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              const Text(
+                'Adjust pin by 25 meters',
+                style: TextStyle(fontSize: 12),
+              ),
+              Wrap(
+                children: [
+                  for (final direction in [
+                    (0.0, 'north', Icons.arrow_upward),
+                    (90.0, 'east', Icons.arrow_forward),
+                    (180.0, 'south', Icons.arrow_downward),
+                    (270.0, 'west', Icons.arrow_back),
+                  ])
+                    IconButton(
+                      tooltip: 'Move pin 25 meters ${direction.$2}',
+                      onPressed: _isSaving
+                          ? null
+                          : () => _movePin(direction.$1),
+                      icon: Icon(direction.$3),
+                    ),
+                ],
+              ),
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  'Pin: ${_selectedLocation.latitude.toStringAsFixed(5)}, ${_selectedLocation.longitude.toStringAsFixed(5)}',
+                  style: const TextStyle(fontSize: 12),
                 ),
               ),
               const SizedBox(height: 16),
@@ -546,8 +610,9 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
               const SizedBox(height: 16),
 
               // Geofence Radius Slider
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              Wrap(
+                spacing: 12,
+                runSpacing: 4,
                 children: [
                   const Text(
                     'Geofence Alert Radius',
@@ -585,6 +650,8 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                 activeColor: _selectedColor,
                 inactiveColor: AppColors.border,
                 label: '${_radius.toInt()}m',
+                semanticFormatterCallback: (value) =>
+                    '${value.round()} meters geofence radius',
                 onChanged: (val) => setState(() => _radius = val),
               ),
               const SizedBox(height: 8),
