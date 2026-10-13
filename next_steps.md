@@ -16,11 +16,11 @@ Ship a reliable, appealing Android family-location app on Google Play. Keep the 
 ## Exact Git state
 
 - Workspace: `D:\Flutter_Projects\Others\Family-Guard`.
-- Current branch: `taha/password-recovery`, based on `taha/history-place-refinements`.
-- Latest app commit: `1ccc451` — simplify map credits and Google Maps directions action.
+- Current branch: `taha/offline-map-polish`, based on `taha/password-recovery`.
+- Latest app commit: `960091c` — bundle offline fonts, persist viewed map tiles, unify attribution and improve accessible place editing.
 - Remote main observed locally: `ebc00d4` — UI accessibility refinements.
 - Current branch contains the newer Workers backend, onboarding and map work. Integrate the final verified head once; do not independently merge every stacked predecessor branch.
-- Latest CI for `1ccc451`: **Android, Flutter and Firebase/backend jobs all passed**.
+- Historical CI for `1ccc451`: **Android, Flutter and Firebase/backend jobs all passed**. New branch CI must be checked after pushing; do not treat the historical run as evidence for newer code.
 - CI evidence: https://github.com/Taha-Saleem-43/Family-Guard/actions/runs/38085743389
 - Documentation-only commits follow that tested app commit. `next_steps.md` is the single maintained guide; the root README links here.
 
@@ -66,12 +66,12 @@ Password recovery update (13 October 2026): sign-in now offers a separate scroll
 ### 1. Finish practical app gaps
 
 - Accessible **Forgot password** flow is implemented on `taha/password-recovery`; verify actual email receipt/reset with an isolated test account before release.
-- Bundle the existing Nunito font assets or choose an offline system-font strategy. Current theme uses Google Fonts runtime fetching.
-- Apply compact visible OpenStreetMap attribution to history and place-picker maps as well as the main map.
-- Verify the actual tile caching behavior against the OSM usage policy. No explicit persistent tile-cache configuration was found in the app map widgets; do not claim caching compliance without checking the installed provider.
-- Change Android launcher display name from `family_guard` to the chosen user-facing brand.
+- Nunito weights 400–900 are bundled; runtime Google Fonts fetching/dependency has been removed. The font license is included and accessible from Settings.
+- Main, history and place-picker maps now use shared visible, linked OpenStreetMap attribution.
+- Installed flutter_map 7.0.2 was inspected: its default network provider has decoded-image memory caching, but no persistent HTTP cache. All three maps now use the shared SQLite tile cache with HTTP expiry/validators, a seven-day fallback, coalesced requests and a 128 MiB payload bound. Local tests cover restart persistence, conditional requests, no-store handling, eviction and deletion fencing. On-device network/cache acceptance is still pending; do not claim universal policy compliance from unit tests alone.
+- Android launcher display name is now **FamilyGuard**.
 - Add accessible privacy-policy and deletion-request links once public pages exist.
-- Review small screens, large text, keyboard handling, TalkBack, contrast, and tap targets across all flows, preserving consent and error/retry behavior.
+- Continue device/TalkBack review across all flows. Place editing now passes a 320-pixel, 2× text and keyboard-inset regression; color choices have accessible labels/48-pixel targets, headings wrap, the radius announces meters, and directional buttons move the pin by 25 meters. History status/empty panels scroll when short of space.
 
 ### 2. Real-device acceptance — biggest engineering gap
 
@@ -156,7 +156,7 @@ Run durable SQLite tests from `tool/sqlite_tests`. Backend and Worker commands a
 
 ## Existing artifacts and evidence
 
-- Last local debug APK: `build/app/outputs/flutter-apk/app-debug.apk`. It was built before the latest map cleanup; use current CI artifact or rebuild for current UI device testing.
+- Current local debug APK: `build/app/outputs/flutter-apk/app-debug.apk`, rebuilt from app commit `960091c`. Package inspection verified all six Nunito weights/license, FamilyGuard launcher label, no exact-alarm permissions, six ARM64 libraries with 16 KB ELF alignment, and APK ZIP alignment. This is a development/debug build; production identity/signing and real 16 KB runtime acceptance remain pending.
 - Onboarding preview: `build/regression-validation/interactive-intro.png`.
 - Bundled video: `assets/videos/family_intro.mp4` (six seconds, approximately 41 KB).
 - Icon preview: `assets/branding/icon_preview.png`.
@@ -171,10 +171,21 @@ Run durable SQLite tests from `tool/sqlite_tests`. Backend and Worker commands a
 - Workers limits: https://developers.cloudflare.com/workers/platform/limits/
 - Firebase pricing/quotas: https://firebase.google.com/pricing
 - OpenStreetMap attribution and tile policy: https://operations.osmfoundation.org/policies/tiles/
+- Bundled Nunito source/license: https://github.com/google/fonts/tree/main/ofl/nunito . Weights 400–900 are static instances of the official variable font, generated with fontTools 4.60.1 in the project `.venv`; the complete OFL is included in assets and the in-app license registry.
+
+## Offline maps/fonts and accessibility verification — 13 October 2026
+
+Branch `taha/offline-map-polish` includes password recovery through its parent branch. Local validation: **171 Flutter tests, 9 real SQLite tests, and clean Flutter analysis**. Both dependency lockfiles are synchronized from the existing local package cache. No backend deployment, billing or paid service changes were made.
+
+Android ARM64-targeted debug build succeeded. APK inspection verified bundled font weights/license, the launcher label, native library/ZIP alignment and absence of exact-alarm permissions. The debug artifact is approximately 125 MiB and still declares additional plugin ABIs; do not use its size as a release download estimate.
+
+Map caching saves only requested public basemap images and HTTP validators, not family markers, routes or names. Stored tiles still reveal previously viewed areas; Settings offers **Clear map cache**. Account deletion clears this cache and decoded map images, with generation fencing so pending requests cannot repopulate cleared storage. SQLite secure deletion is enabled. Tile requests identify FamilyGuard, honour HTTP expiry/ETag/Last-Modified/no-store, use a seven-day fallback when expiry is unavailable, and do not add bulk downloads or offline-area features. Storage failure falls back to network rather than preventing the map from opening; real-device storage/network acceptance is still required.
+
+Place editing adds labelled 48-pixel color choices, wrapping headings, a spoken radius value and 25-meter directional pin controls with an announced coordinate display. A regression covers 320-pixel width, 2× text, keyboard insets and actual pin movement. History loading/error/empty panels can scroll when space is short. These tests do not replace TalkBack or visual acceptance on a phone.
 
 ## Suggested first instruction in the next chat
 
-"Read next_steps.md and inspect the current Git state. Continue the remaining engineering work on taha feature branches, starting with password recovery, offline fonts, map attribution/cache review. Keep dependencies local, preserve the free backend, test and push completed work. Do not reset live data or send real emergency alerts. Then proceed to controlled device acceptance and performance measurements when phones are connected."
+"Read next_steps.md and inspect the current Git state. Password recovery, offline fonts, map attribution and local tile caching are implemented. Check current CI and continue release preparation on taha feature branches. Keep dependencies local and the backend free. Public policy/deletion pages, support contact, permanent application ID and signing need owner input. Proceed to controlled device acceptance and performance measurements when phones are connected. Never reset live data or send real emergency alerts during routine tests."
 
 ## Repository structure and maintenance notes
 
