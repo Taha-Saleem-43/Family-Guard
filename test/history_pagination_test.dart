@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:flutter_map/flutter_map.dart';
 import 'package:family_guard/core/models/location_history_page.dart';
 import 'package:family_guard/core/models/location_history_point.dart';
 import 'package:family_guard/core/models/movement_activity.dart';
@@ -9,6 +11,18 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/material.dart';
 import 'package:family_guard/features/history/presentation/history_screen.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+class TestTiles extends TileProvider {
+  @override
+  ImageProvider getImage(
+    TileCoordinates coordinates,
+    TileLayer options,
+  ) => MemoryImage(
+    base64Decode(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    ),
+  );
+}
 
 class ScriptedPages extends FirestoreLocationService {
   final List<Future<LocationHistoryPage> Function()> responses;
@@ -86,10 +100,16 @@ void main() {
       await tester.pumpWidget(
         UncontrolledProviderScope(
           container: container,
-          child: const MaterialApp(home: HistoryScreen()),
+          child: MaterialApp(home: HistoryScreen(tileProvider: TestTiles())),
         ),
       );
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Stationary Stay'));
+      await tester.pumpAndSettle();
+      expect(find.text('Show all'), findsOneWidget);
+      await tester.tap(find.text('Show all'));
+      await tester.pumpAndSettle();
+      expect(find.text('Show all'), findsNothing);
       await tester.ensureVisible(find.text('Load older history'));
       await tester.tap(find.text('Load older history'));
       await tester.pump();

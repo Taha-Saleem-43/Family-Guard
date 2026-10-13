@@ -3,6 +3,11 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:latlong2/latlong.dart';
 import '../../../../core/models/place.dart';
+import '../../../../core/models/member.dart';
+import '../../../../core/providers/app_state_provider.dart';
+import '../../../../core/providers/member_status_provider.dart';
+import '../../../../core/services/navigation_service.dart';
+import '../../../../core/services/member_profile_decoder.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../providers/places_provider.dart';
 
@@ -49,6 +54,7 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
   late bool _notifyArrive;
   late bool _notifyLeave;
   bool _isSaving = false;
+  String? _nearbyMemberId;
 
   static const List<Color> _colorOptions = [
     AppColors.teal,
@@ -77,7 +83,8 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
       _addressController.text = '';
       _selectedCategory = PlaceCategory.home;
       _radius = 200.0;
-      _selectedLocation = widget.initialLocation ?? const LatLng(33.6844, 73.0479);
+      _selectedLocation =
+          widget.initialLocation ?? const LatLng(33.6844, 73.0479);
       _selectedColor = AppColors.teal;
       _notifyArrive = true;
       _notifyLeave = true;
@@ -88,7 +95,34 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
   void dispose() {
     _nameController.dispose();
     _addressController.dispose();
+    _mapController.dispose();
     super.dispose();
+  }
+
+  List<Member> _availableLocations() {
+    final account = ref.watch(appStateProvider);
+    return ref
+        .watch(memberStateProvider)
+        .where(
+          (member) =>
+              (account.role == UserRole.parent ||
+                  member.id == account.userId) &&
+              !member.isStale &&
+              MemberProfileDecoder.isFresh(member.lastSeen, DateTime.now()) &&
+              NavigationService.hasValidCoordinates(
+                member.latitude,
+                member.longitude,
+              ),
+        )
+        .toList();
+  }
+
+  void _useMemberLocation(Member member) {
+    setState(() {
+      _nearbyMemberId = member.id;
+      _selectedLocation = LatLng(member.latitude!, member.longitude!);
+    });
+    _mapController.move(_selectedLocation, 16);
   }
 
   Future<void> _handleSave() async {
@@ -129,7 +163,9 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              widget.existingPlace != null ? 'Place updated successfully' : 'Saved Place registered!',
+              widget.existingPlace != null
+                  ? 'Place updated successfully'
+                  : 'Saved Place registered!',
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
             backgroundColor: AppColors.teal,
@@ -202,7 +238,10 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close_rounded, color: AppColors.textMuted),
+                    icon: const Icon(
+                      Icons.close_rounded,
+                      color: AppColors.textMuted,
+                    ),
                   ),
                 ],
               ),
@@ -215,8 +254,13 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                 decoration: InputDecoration(
                   labelText: 'Place Name',
                   hintText: 'e.g. Home, School, Grandma\'s House',
-                  prefixIcon: Icon(_selectedCategory.icon, color: _selectedColor),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                  prefixIcon: Icon(
+                    _selectedCategory.icon,
+                    color: _selectedColor,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
                 validator: (val) {
                   if (val == null || val.trim().isEmpty) {
@@ -230,7 +274,11 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
               // Category Selector Chips
               const Text(
                 'Category',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textSecondary),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textSecondary,
+                ),
               ),
               const SizedBox(height: 6),
               SingleChildScrollView(
@@ -244,9 +292,18 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                         label: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(cat.emoji, style: const TextStyle(fontSize: 13)),
+                            Text(
+                              cat.emoji,
+                              style: const TextStyle(fontSize: 13),
+                            ),
                             const SizedBox(width: 4),
-                            Text(cat.displayName, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
+                            Text(
+                              cat.displayName,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
+                              ),
+                            ),
                           ],
                         ),
                         selected: isSelected,
@@ -259,7 +316,8 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                           if (selected) {
                             setState(() {
                               _selectedCategory = cat;
-                              if (_nameController.text.isEmpty && cat != PlaceCategory.custom) {
+                              if (_nameController.text.isEmpty &&
+                                  cat != PlaceCategory.custom) {
                                 _nameController.text = cat.displayName;
                               }
                             });
@@ -275,7 +333,11 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
               // Theme Color Picker
               const Text(
                 'Pin & Geofence Color',
-                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textSecondary),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: AppColors.textSecondary,
+                ),
               ),
               const SizedBox(height: 6),
               Row(
@@ -291,7 +353,9 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                         color: c,
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: isSelected ? Colors.black87 : Colors.transparent,
+                          color: isSelected
+                              ? Colors.black87
+                              : Colors.transparent,
                           width: 2.5,
                         ),
                         boxShadow: isSelected
@@ -304,12 +368,73 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                               ]
                             : null,
                       ),
-                      child: isSelected ? const Icon(Icons.check_rounded, color: Colors.white, size: 18) : null,
+                      child: isSelected
+                          ? const Icon(
+                              Icons.check_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            )
+                          : null,
                     ),
                   );
                 }).toList(),
               ),
               const SizedBox(height: 16),
+
+              Builder(
+                builder: (context) {
+                  final available = _availableLocations();
+                  final selected = available
+                      .where((m) => m.id == _nearbyMemberId)
+                      .firstOrNull;
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      DropdownButtonFormField<String>(
+                        initialValue: selected?.id,
+                        key: ValueKey(selected?.id),
+                        isExpanded: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Start near a family member',
+                        ),
+                        hint: const Text('Choose a recently shared location'),
+                        items: available
+                            .map(
+                              (member) => DropdownMenuItem(
+                                value: member.id,
+                                child: Text(
+                                  member.name,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (id) {
+                          final member = available
+                              .where((m) => m.id == id)
+                              .firstOrNull;
+                          if (member != null) _useMemberLocation(member);
+                        },
+                      ),
+                      if (selected != null) ...[
+                        Text(
+                          'Last shared by ${selected.name} at '
+                          '${TimeOfDay.fromDateTime(selected.lastSeen).format(context)}',
+                        ),
+                        TextButton.icon(
+                          onPressed: () => _useMemberLocation(selected),
+                          icon: const Icon(Icons.my_location_rounded),
+                          label: const Text('Recenter on selected member'),
+                        ),
+                      ] else
+                        const Text(
+                          'Choose a member or tap the map to select a place.',
+                        ),
+                      const SizedBox(height: 12),
+                    ],
+                  );
+                },
+              ),
 
               // Interactive OpenStreetMap Picker with Geofence Radius Overlay
               Row(
@@ -317,11 +442,19 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                 children: [
                   const Text(
                     'Set Location on Map',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textSecondary),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                   Text(
                     'Tap map to set pin',
-                    style: TextStyle(fontSize: 11, color: _selectedColor, fontWeight: FontWeight.w700),
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: _selectedColor,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ],
               ),
@@ -341,7 +474,8 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                     ),
                     children: [
                       TileLayer(
-                        urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                        urlTemplate:
+                            'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                         userAgentPackageName: 'com.familyguard.app',
                       ),
                       // Geofence Radius Circle Preview
@@ -366,11 +500,18 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                             height: 50,
                             child: Column(
                               children: [
-                                Icon(_selectedCategory.icon, color: _selectedColor, size: 30),
+                                Icon(
+                                  _selectedCategory.icon,
+                                  color: _selectedColor,
+                                  size: 30,
+                                ),
                                 Container(
                                   width: 8,
                                   height: 8,
-                                  decoration: BoxDecoration(color: _selectedColor, shape: BoxShape.circle),
+                                  decoration: BoxDecoration(
+                                    color: _selectedColor,
+                                    shape: BoxShape.circle,
+                                  ),
                                 ),
                               ],
                             ),
@@ -386,12 +527,20 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
               // Address Field (Optional text)
               TextFormField(
                 controller: _addressController,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
                 decoration: InputDecoration(
                   labelText: 'Address Description',
                   hintText: 'e.g. 123 Main Street, Sector F-7',
-                  prefixIcon: const Icon(Icons.map_outlined, color: AppColors.textMuted),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                  prefixIcon: const Icon(
+                    Icons.map_outlined,
+                    color: AppColors.textMuted,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -402,17 +551,28 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                 children: [
                   const Text(
                     'Geofence Alert Radius',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: AppColors.textSecondary),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textSecondary,
+                    ),
                   ),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
                     decoration: BoxDecoration(
                       color: _selectedColor.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: Text(
                       '${_radius.toInt()} meters',
-                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: _selectedColor),
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        color: _selectedColor,
+                      ),
                     ),
                   ),
                 ],
@@ -436,13 +596,28 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(color: AppColors.border),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 8,
+                ),
                 child: Column(
                   children: [
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Arrival Alerts', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
-                      subtitle: const Text('Notify Circle when members enter this place', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                      title: const Text(
+                        'Arrival Alerts',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      subtitle: const Text(
+                        'Notify Circle when members enter this place',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
                       value: _notifyArrive,
                       activeThumbColor: _selectedColor,
                       onChanged: (val) => setState(() => _notifyArrive = val),
@@ -450,8 +625,20 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                     const Divider(height: 1),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: const Text('Departure Alerts', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
-                      subtitle: const Text('Notify Circle when members leave this place', style: TextStyle(fontSize: 11, color: AppColors.textSecondary)),
+                      title: const Text(
+                        'Departure Alerts',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      subtitle: const Text(
+                        'Notify Circle when members leave this place',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: AppColors.textSecondary,
+                        ),
+                      ),
                       value: _notifyLeave,
                       activeThumbColor: _selectedColor,
                       onChanged: (val) => setState(() => _notifyLeave = val),
@@ -469,19 +656,35 @@ class _AddEditPlaceDialogState extends ConsumerState<AddEditPlaceDialog> {
                     backgroundColor: _selectedColor,
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
                   ),
                   onPressed: _isSaving ? null : _handleSave,
                   icon: _isSaving
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
-                      : Icon(isEdit ? Icons.check_circle_rounded : Icons.add_location_alt_rounded),
+                      : Icon(
+                          isEdit
+                              ? Icons.check_circle_rounded
+                              : Icons.add_location_alt_rounded,
+                        ),
                   label: Text(
-                    _isSaving ? 'Saving Place...' : (isEdit ? 'Save Changes' : 'Save Place & Register Geofence'),
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+                    _isSaving
+                        ? 'Saving Place...'
+                        : (isEdit
+                              ? 'Save Changes'
+                              : 'Save Place & Register Geofence'),
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
                 ),
               ),

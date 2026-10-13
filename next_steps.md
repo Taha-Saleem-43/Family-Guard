@@ -1,6 +1,6 @@
 # FamilyGuard — handoff and next steps
 
-Updated: 11 October 2026. Read this first when continuing in a new chat.
+Updated: 13 October 2026. Read this first when continuing in a new chat.
 
 ## Goal and owner preferences
 
@@ -16,7 +16,7 @@ Ship a reliable, appealing Android family-location app on Google Play. Keep the 
 ## Exact Git state
 
 - Workspace: `D:\Flutter_Projects\Others\Family-Guard`.
-- Current branch: `taha/docs-cleanup` (documentation consolidation), based on `taha/map-actions-cleanup`.
+- Current branch: `taha/history-place-refinements`, based on `taha/docs-cleanup`.
 - Latest app commit: `1ccc451` — simplify map credits and Google Maps directions action.
 - Remote main observed locally: `ebc00d4` — UI accessibility refinements.
 - Current branch contains the newer Workers backend, onboarding and map work. Integrate the final verified head once; do not independently merge every stacked predecessor branch.
@@ -210,3 +210,17 @@ Regenerate original introduction/icon assets using the project virtual environme
 ```
 
 The introduction is silent, 720 × 576 H.264 at 24 fps. Its poster supports reduced motion and video failure. Pause playback in the background and dispose the player when leaving onboarding. Demo interactions must never start real tracking or send alerts.
+
+## Copy review and integrated refinements — 13 October 2026
+
+Reviewed `D:/Flutter_Projects/copy/Family-Guard`, an older shared Git base with uncommitted UI refinements. Do not replace the current app/backend with that copy. Its cached identity tokens, client-side retention, estimated trip distances and debug release signing are superseded.
+
+Integrated the useful ideas into the current code:
+
+- History cards select a captured trip/stay, highlight selection, fit the map to its coordinates and offer Show all. Selection resets across account/circle/role/member/timeframe/loading changes; pagination and recorded-circle access remain intact. Overall route points are chronological.
+- Short segments show < 1 min; a single point says Captured at rather than claiming an arrival. Distance still comes from coordinates.
+- Place setup lets the user explicitly choose a family member with fresh valid coordinates and recenter on that last shared position. The source name and time are shown. Existing places keep their saved position until the user explicitly changes it. No new location permission or external search service is introduced.
+
+Address search remains optional future work. The old public Nominatim calls need a deliberate compliant provider decision, shared throttling, caching, attribution, cancellation and protection against stale results. Old branding assets are optional alternatives; current onboarding is more robust. The old copy directory and Tracelet spike are unchanged. A service-account key exists at the copy directory root; handle that credential separately before deleting/archive-sharing the folder.
+
+Validation: 28 focused history/place tests passed; added regressions cover route filtering/reset, honest short durations and member selection/recentering. Final UI card/Show all pagination checks and analysis are run before pushing. Device visual acceptance remains pending.

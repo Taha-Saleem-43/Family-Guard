@@ -22,6 +22,15 @@ final selectedHistoryMemberIdProvider = StateProvider<String?>((ref) {
   return null;
 });
 
+/// Selection resets across identity, role, member and timeframe boundaries.
+final selectedHistoryTimelineIdProvider = StateProvider<String?>((ref) {
+  ref.watch(appStateProvider.select((s) => (s.userId, s.circleId, s.role)));
+  ref.watch(selectedHistoryMemberIdProvider);
+  ref.watch(selectedHistoryTimeframeProvider);
+  ref.watch(rawLocationHistoryProvider.select((value) => value.isLoading));
+  return null;
+});
+
 /// Firestore location service instance
 final firestoreLocationServiceProvider = Provider(
   (ref) => FirestoreLocationService(),
@@ -166,12 +175,15 @@ final historyRoutePolylineProvider = Provider<List<LatLng>>((ref) {
   final asyncPoints = ref.watch(rawLocationHistoryProvider);
   if (asyncPoints.isLoading || asyncPoints.hasError) return [];
 
-  return asyncPoints.when(
-    data: (points) =>
-        points.map((p) => LatLng(p.latitude, p.longitude)).toList(),
-    loading: () => [],
-    error: (err, stack) => [],
-  );
+  final selectedId = ref.watch(selectedHistoryTimelineIdProvider);
+  final selected = ref
+      .watch(historyTimelineProvider)
+      .where((item) => item.id == selectedId)
+      .firstOrNull;
+  if (selected != null) return selected.polylinePoints;
+  final points = [...?asyncPoints.value]
+    ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+  return points.map((p) => LatLng(p.latitude, p.longitude)).toList();
 });
 
 List<HistoryTimelineItem> _aggregatePointsToTimeline(
@@ -206,12 +218,16 @@ List<HistoryTimelineItem> _aggregatePointsToTimeline(
 
     final start = startPt.timestamp;
     final end = endPt.timestamp;
-    final diffMinutes = end.difference(start).inMinutes.abs();
-    final durationStr = diffMinutes > 60
-        ? '${(diffMinutes / 60).toStringAsFixed(1)} hrs'
-        : '$diffMinutes mins';
-    final timeRangeStr =
-        '${DateFormat('h:mm a').format(start)} - ${DateFormat('h:mm a').format(end)}';
+    final seconds = end.difference(start).inSeconds.abs();
+    final minutes = seconds ~/ 60;
+    final durationStr = seconds < 60
+        ? '< 1 min'
+        : minutes >= 60
+        ? '${(minutes / 60).toStringAsFixed(1)} hrs'
+        : '$minutes mins';
+    final timeRangeStr = seconds == 0
+        ? 'Captured at ${DateFormat('h:mm a').format(start)}'
+        : '${DateFormat('h:mm a').format(start)} - ${DateFormat('h:mm a').format(end)}';
 
     if (activity == MovementActivity.stationary) {
       final matchedPlace = findMatchingSavedPlace(

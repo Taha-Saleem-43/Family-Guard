@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -10,7 +11,8 @@ import '../../../core/presentation/screen_header.dart';
 import '../providers/history_provider.dart';
 
 class HistoryScreen extends ConsumerStatefulWidget {
-  const HistoryScreen({super.key});
+  final TileProvider? tileProvider;
+  const HistoryScreen({super.key, this.tileProvider});
 
   @override
   ConsumerState<HistoryScreen> createState() => _HistoryScreenState();
@@ -18,6 +20,34 @@ class HistoryScreen extends ConsumerStatefulWidget {
 
 class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   final MapController _mapController = MapController();
+
+  bool _mapReady = false;
+
+  void _fitRoute(List<LatLng> points) {
+    if (!_mapReady || points.isEmpty) return;
+    _mapController.fitCamera(
+      CameraFit.coordinates(
+        coordinates: points,
+        padding: const EdgeInsets.all(28),
+        maxZoom: 16,
+      ),
+    );
+  }
+
+  Widget _selectableCard(HistoryTimelineItem item, {required Widget child}) {
+    final selected = ref.watch(selectedHistoryTimelineIdProvider) == item.id;
+    return Semantics(
+      selected: selected,
+      button: true,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () =>
+            ref.read(selectedHistoryTimelineIdProvider.notifier).state =
+                selected ? null : item.id,
+        child: child,
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -39,6 +69,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(historyRoutePolylineProvider, (_, points) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _fitRoute(points);
+      });
+    });
     final selectedTab = ref.watch(selectedHistoryTimeframeProvider);
     final members = ref.watch(memberStateProvider);
     final appState = ref.watch(appStateProvider);
@@ -46,6 +81,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         ref.watch(selectedHistoryMemberIdProvider) ?? appState.userId;
     final timelineItems = ref.watch(historyTimelineProvider);
     final polylinePoints = ref.watch(historyRoutePolylineProvider);
+    if (polylinePoints.isEmpty) _mapReady = false;
     final history = ref.watch(rawLocationHistoryProvider);
     final pager = ref.read(rawLocationHistoryProvider.notifier);
     final canSelectMembers =
@@ -207,6 +243,10 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         options: MapOptions(
                           initialCenter: polylinePoints.first,
                           initialZoom: 13.0,
+                          onMapReady: () {
+                            _mapReady = true;
+                            _fitRoute(ref.read(historyRoutePolylineProvider));
+                          },
                           interactionOptions: const InteractionOptions(
                             flags:
                                 InteractiveFlag.drag |
@@ -215,6 +255,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         ),
                         children: [
                           TileLayer(
+                            tileProvider: widget.tileProvider,
                             urlTemplate:
                                 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                             userAgentPackageName: 'com.familyguard.app',
@@ -360,6 +401,20 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
               ),
             ),
 
+            if (ref.watch(selectedHistoryTimelineIdProvider) != null)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton.icon(
+                  onPressed: () =>
+                      ref
+                              .read(selectedHistoryTimelineIdProvider.notifier)
+                              .state =
+                          null,
+                  icon: const Icon(Icons.route_rounded),
+                  label: const Text('Show all'),
+                ),
+              ),
+
             // Timeline List / Empty State
             Expanded(
               child: history.isLoading
@@ -453,100 +508,108 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
                         }
                         final item = timelineItems[index];
 
-                        return Card(
-                          elevation: 1,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(10),
-                                  decoration: BoxDecoration(
-                                    color: item.color.withValues(alpha: 0.12),
-                                    borderRadius: BorderRadius.circular(14),
+                        return _selectableCard(
+                          item,
+                          child: Card(
+                            color:
+                                ref.watch(selectedHistoryTimelineIdProvider) ==
+                                    item.id
+                                ? AppColors.primaryLight
+                                : Colors.white,
+                            elevation: 1,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.all(10),
+                                    decoration: BoxDecoration(
+                                      color: item.color.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    child: Icon(
+                                      item.icon,
+                                      size: 24,
+                                      color: item.color,
+                                    ),
                                   ),
-                                  child: Icon(
-                                    item.icon,
-                                    size: 24,
-                                    color: item.color,
-                                  ),
-                                ),
-                                const SizedBox(width: 14),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              item.title,
-                                              style: const TextStyle(
-                                                fontSize: 15,
-                                                fontWeight: FontWeight.w900,
-                                                color: AppColors.textPrimary,
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                item.title,
+                                                style: const TextStyle(
+                                                  fontSize: 15,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: AppColors.textPrimary,
+                                                ),
+                                                overflow: TextOverflow.ellipsis,
                                               ),
-                                              overflow: TextOverflow.ellipsis,
                                             ),
-                                          ),
-                                          Text(
-                                            DateFormat(
-                                              'h:mm a',
-                                            ).format(item.startTime),
-                                            style: const TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w700,
-                                              color: AppColors.textMuted,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        item.address,
-                                        style: const TextStyle(
-                                          fontSize: 13,
-                                          color: AppColors.textSecondary,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Text(
-                                            item.durationText,
-                                            style: TextStyle(
-                                              fontSize: 11,
-                                              color: item.color,
-                                              fontWeight: FontWeight.w800,
-                                            ),
-                                          ),
-                                          if (item.type ==
-                                                  TimelineItemType.trip &&
-                                              item.distanceMiles > 0)
                                             Text(
-                                              '~${item.distanceMiles.toStringAsFixed(1)} mi',
+                                              DateFormat(
+                                                'h:mm a',
+                                              ).format(item.startTime),
                                               style: const TextStyle(
                                                 fontSize: 11,
-                                                color: AppColors.textMuted,
                                                 fontWeight: FontWeight.w700,
+                                                color: AppColors.textMuted,
                                               ),
                                             ),
-                                        ],
-                                      ),
-                                    ],
+                                          ],
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          item.address,
+                                          style: const TextStyle(
+                                            fontSize: 13,
+                                            color: AppColors.textSecondary,
+                                            fontWeight: FontWeight.w500,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Text(
+                                              item.durationText,
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                color: item.color,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                            if (item.type ==
+                                                    TimelineItemType.trip &&
+                                                item.distanceMiles > 0)
+                                              Text(
+                                                '~${item.distanceMiles.toStringAsFixed(1)} mi',
+                                                style: const TextStyle(
+                                                  fontSize: 11,
+                                                  color: AppColors.textMuted,
+                                                  fontWeight: FontWeight.w700,
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         );
