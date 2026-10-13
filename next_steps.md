@@ -17,7 +17,7 @@ Ship a reliable, appealing Android family-location app on Google Play. Keep the 
 
 - Workspace: `D:\Flutter_Projects\Others\Family-Guard`.
 - Current branch: `taha/offline-map-polish`, based on `taha/password-recovery`.
-- Latest app commit: `960091c` — bundle offline fonts, persist viewed map tiles, unify attribution and improve accessible place editing.
+- Latest app commit: `e5b15c2` — bundle offline fonts, persist viewed map tiles, unify attribution and improve accessible place editing.
 - Remote main observed locally: `ebc00d4` — UI accessibility refinements.
 - Current branch contains the newer Workers backend, onboarding and map work. Integrate the final verified head once; do not independently merge every stacked predecessor branch.
 - Historical CI for `1ccc451`: **Android, Flutter and Firebase/backend jobs all passed**. New branch CI must be checked after pushing; do not treat the historical run as evidence for newer code.
@@ -156,7 +156,7 @@ Run durable SQLite tests from `tool/sqlite_tests`. Backend and Worker commands a
 
 ## Existing artifacts and evidence
 
-- Current local debug APK: `build/app/outputs/flutter-apk/app-debug.apk`, rebuilt from app commit `960091c`. Package inspection verified all six Nunito weights/license, FamilyGuard launcher label, no exact-alarm permissions, six ARM64 libraries with 16 KB ELF alignment, and APK ZIP alignment. This is a development/debug build; production identity/signing and real 16 KB runtime acceptance remain pending.
+- Current local debug APK: `build/app/outputs/flutter-apk/app-debug.apk`, rebuilt from app commit `e5b15c2`. Package inspection verified all six Nunito weights/license, FamilyGuard launcher label, no exact-alarm permissions, six ARM64 libraries with 16 KB ELF alignment, and APK ZIP alignment. This is a development/debug build; production identity/signing and real 16 KB runtime acceptance remain pending.
 - Onboarding preview: `build/regression-validation/interactive-intro.png`.
 - Bundled video: `assets/videos/family_intro.mp4` (six seconds, approximately 41 KB).
 - Icon preview: `assets/branding/icon_preview.png`.
@@ -175,7 +175,7 @@ Run durable SQLite tests from `tool/sqlite_tests`. Backend and Worker commands a
 
 ## Offline maps/fonts and accessibility verification — 13 October 2026
 
-Branch `taha/offline-map-polish` includes password recovery through its parent branch. Local validation: **171 Flutter tests, 9 real SQLite tests, and clean Flutter analysis**. Both dependency lockfiles are synchronized from the existing local package cache. No backend deployment, billing or paid service changes were made.
+Branch `taha/offline-map-polish` includes password recovery through its parent branch. Local validation: **172 Flutter tests, 9 real SQLite tests, and clean Flutter analysis**. A follow-up cache regression verifies that stalled connections time out, retry succeeds and late responses do not restore cleared tiles; scoped analysis also passed after that fix. Both dependency lockfiles are synchronized from the existing local package cache. No backend deployment, billing or paid service changes were made.
 
 Android ARM64-targeted debug build succeeded. APK inspection verified bundled font weights/license, the launcher label, native library/ZIP alignment and absence of exact-alarm permissions. The debug artifact is approximately 125 MiB and still declares additional plugin ABIs; do not use its size as a release download estimate.
 
