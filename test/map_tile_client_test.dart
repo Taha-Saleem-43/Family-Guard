@@ -182,4 +182,32 @@ void main() {
       now.add(const Duration(seconds: 90)),
     );
   });
+
+  test(
+    'a stalled connection times out, can retry, and cannot save a late response',
+    () async {
+      final store = MemoryTiles();
+      final stalled = Completer<http.Response>();
+      var calls = 0;
+      final client = MapTileClient(
+        store: store,
+        clock: () => now,
+        requestTimeout: const Duration(milliseconds: 20),
+        network: MockClient((_) {
+          calls++;
+          return calls == 1
+              ? stalled.future
+              : Future.value(http.Response.bytes(tile, 200));
+        }),
+      );
+      await expectLater(client.get(url), throwsA(isA<TimeoutException>()));
+      expect(store.values, isEmpty);
+      expect((await client.get(url)).bodyBytes, tile);
+      await store.clear();
+      stalled.complete(http.Response.bytes(tile, 200));
+      await Future<void>.delayed(Duration.zero);
+      expect(store.values, isEmpty);
+      expect(calls, 2);
+    },
+  );
 }

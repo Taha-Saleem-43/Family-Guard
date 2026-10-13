@@ -8,6 +8,7 @@ class MapTileClient extends http.BaseClient {
   final http.Client network;
   final MapTileStore store;
   final DateTime Function() clock;
+  final Duration requestTimeout;
   final _pending = <String, Future<http.Response>>{};
   int _generation = 0;
   bool _closed = false;
@@ -16,6 +17,7 @@ class MapTileClient extends http.BaseClient {
     http.Client? network,
     MapTileStore? store,
     DateTime Function()? clock,
+    this.requestTimeout = const Duration(seconds: 20),
   }) : network = network ?? http.Client(),
        store = store ?? MapTileCache.shared,
        clock = clock ?? DateTime.now;
@@ -64,9 +66,10 @@ class MapTileClient extends http.BaseClient {
       if (etag != null) request.headers['If-None-Match'] = etag;
       if (modified != null) request.headers['If-Modified-Since'] = modified;
     }
-    final result = await http.Response.fromStream(
-      await network.send(request),
-    ).timeout(const Duration(seconds: 20));
+    final result = await network
+        .send(request)
+        .then(http.Response.fromStream)
+        .timeout(requestTimeout);
     final headers = {...?cached?.headers, ...result.headers};
     final bytes = result.statusCode == 304 && cached != null
         ? cached.bytes
