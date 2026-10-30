@@ -16,12 +16,12 @@ Ship a reliable, appealing Android family-location app on Google Play. Keep the 
 ## Exact Git state
 
 - Workspace: `D:\Flutter_Projects\Others\Family-Guard`.
-- Current branch: `taha/privacy-pages`, based on `taha/backend-observability`.
-- Latest backend commit: `df43cf8` — sampled operational diagnostics, offline capacity estimates and read-only aggregate metrics.
+- Current branch: `taha/backend-cpu-headroom`, based on `taha/privacy-pages`.
+- Latest backend commit: `be439f4` — partition scheduled maintenance to reduce CPU per invocation; retain sampled diagnostics and capacity estimates.
 - Latest app commit: `5ac3c35` — link public privacy/account-deletion pages and support contact before sign-up and in Settings.
 - Remote main observed locally: `ebc00d4` — UI accessibility refinements.
 - Current branch contains the newer Workers backend, onboarding and map work. Integrate the final verified head once; do not independently merge every stacked predecessor branch.
-- CI for `205e699` (backend monitoring/capacity): **all jobs passed**. Check the newer privacy-pages branch CI after pushing.
+- CI for `205e699` (backend monitoring/capacity) and privacy-pages run `41099617428`: **all jobs passed**. Check the newer CPU branch CI after pushing.
 - CI evidence: https://github.com/Taha-Saleem-43/Family-Guard/actions/runs/41095353878
 - Backend and documentation commits follow that tested app commit. `next_steps.md` is the single maintained guide; the root README links here.
 
@@ -99,7 +99,7 @@ Do not silently trigger emergencies on real family accounts. Use isolated consen
 - Previous short phone measurements on an older profile build: first frame about 2.99 seconds, settled CPU samples 0–1.6% of one core. These are not current-build or battery acceptance results.
 - Measure actual Cloudflare CPU, errors, Firestore reads/writes and cleanup throughput under representative bounded load; define a supported launch size.
 - Sampled monitoring is deployed: 10% custom operation summaries, automatic invocation logs/tracing/issues disabled and query strings redacted. Offline capacity and read-only aggregate metrics commands are documented below. This does not provide an exact Firestore billing ledger or guaranteed incident alerts.
-- **CPU headroom is a launch concern:** the day-to-date aggregate snapshot on 30 October showed median 7.179 ms / P99 13.061 ms CPU, with zero runtime errors. P99 exceeds the nominal 10 ms Free limit; isolate flexibility is not a sustainable capacity plan. Attribute costly operations and reduce/partition high-CPU work before increasing launch traffic. Current mostly-maintenance traffic is not representative user load.
+- **CPU headroom still needs representative-load acceptance:** the original day-to-date snapshot showed median 7.179 ms / P99 13.061 ms. Scheduled work is now partitioned; see the deployment measurements below. Mostly-idle maintenance traffic does not establish CPU limits for location ingestion, fanout, account cleanup or cold invocations under load.
 - Workers Free documented limits: 100,000 requests/day, 10 ms CPU per invocation, 50 subrequests. Firebase Spark and cron cleanup also impose finite capacity. Reverify provider limits before capacity decisions.
 
 ### 4. Production identity, signing and signed-build verification
@@ -183,15 +183,31 @@ Commands use existing project-local Node dependencies and auth:
 & 'C:/Program Files/nodejs/node.exe' scripts/worker-metrics.cjs
 ```
 
-The metrics exporter keeps credentials in memory and emits numeric aggregates only. It reuses `.cache/cloudflare/.wrangler/config/default.toml` (or an explicitly supplied environment token), never prints tokens or creates permissions. If auth expires, use existing Wrangler login/refresh with the local XDG cache; missing metrics are reported unavailable, never zero. A transient unavailable response was observed during this session; a later read succeeded. No new token/key or monitoring service is required.
+The metrics exporter keeps credentials in memory and emits numeric aggregates only. It captures the supported local `wrangler auth token --json` command through private pipes (or uses an explicitly supplied environment token), never prints tokens or creates permissions. Wrangler may use the OS keychain; do not rely on the stale legacy plaintext auth cache. If auth expires, use existing Wrangler login/refresh with the local XDG cache; missing metrics are reported unavailable, never zero. Optional `--since <ISO timestamp>` restricts the query to a deployment window within the last 24 hours. No new token/key or monitoring service is required.
 
 Verified aggregate snapshot at 2026-10-30T16:57:48Z: 1,046 requests, zero runtime errors, 8,428 subrequests; CPU median 7.179 ms / P99 13.061 ms. CPU quantile units were verified from the live provider GraphQL field descriptions (microseconds) before conversion. This spans the day's mostly idle scheduled traffic and only moments after deployment; it cannot establish monitoring overhead, a supported launch size, per-invocation maxima or performance under user load.
 
-Current idle schedule costs are tested in the actual local Worker runtime: eight empty queries per minute plus ten every half hour = **12,000 minimum Firestore reads/day**, with 1,488 scheduled invocations/day. Empty queries still consume reads. History cleanup remains bounded to 9,600 points/day. The default offline example assumes three children, eight tracking hours (one moving), 45/180-second moving/stationary intervals, ten extra fixes/child, two listener reads/fix, 10% retry overhead, extra daily traffic and 30% budget headroom. It estimates 690 unique points/day, 19,934 reads/day and 3,277 writes/day. Assumptions are editable; CPU, real listener/reconnect/index/rules costs, storage/bandwidth, bursts and fanout remain unvalidated. A within-target estimate is not launch approval.
+Current idle schedule costs are tested in the actual local Worker runtime: eight empty queries per minute plus thirteen every half hour = **12,144 minimum Firestore reads/day**, with **13,632 invocations/day** including cron coordinators and signed children. Before partitioning, the baseline was 12,000 reads and 1,488 invocations/day. Empty queries still consume reads. History cleanup remains bounded to 9,600 points/day. The default offline example assumes three children, eight tracking hours (one moving), 45/180-second moving/stationary intervals, ten extra fixes/child, two listener reads/fix, 10% retry overhead, extra daily traffic and 30% budget headroom. It estimates 690 unique points/day, 15,392 Worker requests/day, 20,078 reads/day and 3,277 writes/day. Assumptions are editable; CPU, real listener/reconnect/index/rules costs, storage/bandwidth, bursts and fanout remain unvalidated. A within-target estimate is not launch approval.
 
 As checked on 30 October, official limits list Workers Free 100,000 requests/day, 10 ms CPU and 50 subrequests per invocation; Firestore free quotas include 50,000 reads, 20,000 writes and 20,000 deletes/day. Workers Logs currently includes 200,000 events/day and three-day retention on Free. Cloudflare announces observability pricing changes from 1 December 2026: recheck terms before that date and never enable a paid plan without owner approval.
 
 Validation: 24 distinct Worker unit/security/privacy/capacity cases, five backend domain cases, actual local Worker JWT/OAuth/circle/signed-job/cron checks, and all 52 REST-adapter integration cases passed. The first emulator launcher was interrupted during a cache-path restart; its nine child suites completed with zero failed/cancelled tests, and the task-owned demo emulator was stopped afterwards. CI for `205e699` subsequently passed all jobs, including the clean end-to-end launcher. Use `FIREBASE_EMULATORS_PATH=$PWD/.cache/firebase/emulators` for future emulator runs. No real accounts, locations, alerts or deletion requests were created during these checks.
+
+## Backend CPU partitioning — 30 October 2026
+
+Code commit `be439f4`, deployed Worker version **`d31e3ceb-a115-4493-b878-6d7548b4bc4d`**, active from `2026-10-30T17:53:29.601Z`. Cron coordinators dispatch fixed allowlisted, HMAC-signed jobs; each current recovery child runs one query. Cleanup runs one collection per child; history uses four sequential pages of 50 expired points instead of one page of 200. The minute recovery and half-hour cleanup cadence, expiry predicates, delivery limits and 9,600-point daily history capacity remain intact. A failed partition does not starve later partitions. Old signed partition names remain accepted during rollout. No paid queue, new package, resource, secret, IAM or billing change was introduced.
+
+Read-only aggregate comparisons (UTC; adaptive analytics, not a benchmark):
+
+| Window | Requests | Errors | CPU median | CPU P99 |
+| --- | ---: | ---: | ---: | ---: |
+| Before, 17:13:38–17:43:38 | 30 | 0 | 10.088 ms | 14.525 ms |
+| First partition deployment, 17:44:49–17:49:45 | 27 | 0 | 2.981 ms | 10.326 ms |
+| Refined deployment, 17:53:29–17:56:01 | 23 | 0 | 1.821 ms | 7.948 ms |
+
+The first partition version was `e37ab9c8-8178-4a70-ab84-8b3a52031a87`; the refined version further splits pending/stalled recovery and reduces history page size. These short, mostly-idle windows differ in request mix and include coordinator/health traffic. They demonstrate lower observed aggregate CPU, not guaranteed CPU headroom under user load. The refined window excludes a half-hour cleanup tick; loaded cleanup, cold authenticated requests and family activity still require bounded acceptance. No real SOS or account-deletion test was sent.
+
+Validation: all **31 Worker unit/security/adapter/maintenance cases**, **5 backend domain cases**, dry-run bundle, and local Worker runtime JWT/OAuth/circle/signed-job/recovery/cleanup checks passed. Runtime asserts eight recovery and thirteen cleanup queries per idle tick. Three live health requests returned ready/HTTP 200 (371/95/29 ms wall time). Git diff whitespace checks passed. Flutter/native builds were not repeated for this backend/tooling-only change. Check this branch's CI after pushing.
 
 ## Public privacy and deletion pages — 30 October 2026
 
@@ -239,7 +255,7 @@ Place editing adds labelled 48-pixel color choices, wrapping headings, a spoken 
 
 ## Suggested first instruction in the next chat
 
-"Read next_steps.md and inspect the current Git state. Password recovery, offline fonts, map attribution and local tile caching are implemented. Check current CI and continue release preparation on taha feature branches. Keep dependencies local and the backend free. Public policy/deletion pages, support contact, permanent application ID and signing need owner input. Proceed to controlled device acceptance and performance measurements when phones are connected. Never reset live data or send real emergency alerts during routine tests."
+"Read next_steps.md and inspect the current Git state. Public policy/deletion pages and app links, password recovery, offline fonts, map attribution, local tile caching and partitioned backend maintenance are implemented. Check current CI and continue release preparation on taha feature branches. Keep dependencies local and the backend free. Permanent application ID and signing need owner input. Proceed to controlled device acceptance and performance measurements when phones are connected. Never reset live data or send real emergency alerts during routine tests."
 
 ## Repository structure and maintenance notes
 
