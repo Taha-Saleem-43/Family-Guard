@@ -16,13 +16,13 @@ Ship a reliable, appealing Android family-location app on Google Play. Keep the 
 ## Exact Git state
 
 - Workspace: `D:\Flutter_Projects\Others\Family-Guard`.
-- Current branch: `taha/backend-observability`, based on `taha/offline-map-polish`.
+- Current branch: `taha/privacy-pages`, based on `taha/backend-observability`.
 - Latest backend commit: `df43cf8` — sampled operational diagnostics, offline capacity estimates and read-only aggregate metrics.
-- Latest app commit: `e5b15c2` — bundle offline fonts, persist viewed map tiles, unify attribution and improve accessible place editing.
+- Latest app commit: `5ac3c35` — link public privacy/account-deletion pages and support contact before sign-up and in Settings.
 - Remote main observed locally: `ebc00d4` — UI accessibility refinements.
 - Current branch contains the newer Workers backend, onboarding and map work. Integrate the final verified head once; do not independently merge every stacked predecessor branch.
-- CI for `b76f58c` (offline map/font work): **all jobs passed**. Check the newer backend branch CI after pushing.
-- CI evidence: https://github.com/Taha-Saleem-43/Family-Guard/actions/runs/38430580617
+- CI for `205e699` (backend monitoring/capacity): **all jobs passed**. Check the newer privacy-pages branch CI after pushing.
+- CI evidence: https://github.com/Taha-Saleem-43/Family-Guard/actions/runs/41095353878
 - Backend and documentation commits follow that tested app commit. `next_steps.md` is the single maintained guide; the root README links here.
 
 ## Implemented
@@ -71,7 +71,7 @@ Password recovery update (13 October 2026): sign-in now offers a separate scroll
 - Main, history and place-picker maps now use shared visible, linked OpenStreetMap attribution.
 - Installed flutter_map 7.0.2 was inspected: its default network provider has decoded-image memory caching, but no persistent HTTP cache. All three maps now use the shared SQLite tile cache with HTTP expiry/validators, a seven-day fallback, coalesced requests and a 128 MiB payload bound. Local tests cover restart persistence, conditional requests, no-store handling, eviction and deletion fencing. On-device network/cache acceptance is still pending; do not claim universal policy compliance from unit tests alone.
 - Android launcher display name is now **FamilyGuard**.
-- Add accessible privacy-policy and deletion-request links once public pages exist.
+- Public privacy and account-deletion pages are published, using `tahasaleemdev@gmail.com`; links are available before account creation and in Settings. Email requests require manual owner follow-up and ownership verification, not automatic deletion. See the publication details below.
 - Continue device/TalkBack review across all flows. Place editing now passes a 320-pixel, 2× text and keyboard-inset regression; color choices have accessible labels/48-pixel targets, headings wrap, the radius announces meters, and directional buttons move the pin by 25 meters. History status/empty panels scroll when short of space.
 
 ### 2. Real-device acceptance — biggest engineering gap
@@ -117,7 +117,7 @@ Do not silently trigger emergencies on real family accounts. Use isolated consen
 - Owner previously said no Play Console account existed; account completion has not been confirmed.
 - Google Play registration currently requires a $25 one-time fee. Backend operation can stay on free plans, but Play registration is not free.
 - New personal accounts require at least 12 continuously opted-in closed testers for 14 days before applying for production access. A public launch next week is not feasible when starting that requirement now.
-- Publish accurate privacy and account-deletion request pages; provide a support contact.
+- Privacy and account-deletion pages/support contact are published (details below). Keep their content accurate as retention, providers, target-audience decisions and data handling evolve; this publication is not Play approval.
 - Complete Data safety, target audience/content rating, background-location disclosures/review, foreground-service declarations and reviewer access instructions as applicable.
 - Prepare screenshots, feature graphic, final listing copy and test distribution.
 - Use Play pre-launch checks and closed-test feedback before production submission.
@@ -158,7 +158,7 @@ Run durable SQLite tests from `tool/sqlite_tests`. Backend and Worker commands a
 
 ## Existing artifacts and evidence
 
-- Current local debug APK: `build/app/outputs/flutter-apk/app-debug.apk`, rebuilt from app commit `e5b15c2`. Package inspection verified all six Nunito weights/license, FamilyGuard launcher label, no exact-alarm permissions, six ARM64 libraries with 16 KB ELF alignment, and APK ZIP alignment. This is a development/debug build; production identity/signing and real 16 KB runtime acceptance remain pending.
+- Last local debug APK: `build/app/outputs/flutter-apk/app-debug.apk`, rebuilt from app commit `e5b15c2` before the privacy-link change. Package inspection verified all six Nunito weights/license, FamilyGuard launcher label, no exact-alarm permissions, six ARM64 libraries with 16 KB ELF alignment, and APK ZIP alignment. Rebuild current head or use its CI artifact to test the new policy links. Production identity/signing and real 16 KB runtime acceptance remain pending.
 - Onboarding preview: `build/regression-validation/interactive-intro.png`.
 - Bundled video: `assets/videos/family_intro.mp4` (six seconds, approximately 41 KB).
 - Icon preview: `assets/branding/icon_preview.png`.
@@ -191,7 +191,30 @@ Current idle schedule costs are tested in the actual local Worker runtime: eight
 
 As checked on 30 October, official limits list Workers Free 100,000 requests/day, 10 ms CPU and 50 subrequests per invocation; Firestore free quotas include 50,000 reads, 20,000 writes and 20,000 deletes/day. Workers Logs currently includes 200,000 events/day and three-day retention on Free. Cloudflare announces observability pricing changes from 1 December 2026: recheck terms before that date and never enable a paid plan without owner approval.
 
-Validation: 24 distinct Worker unit/security/privacy/capacity cases, five backend domain cases, actual local Worker JWT/OAuth/circle/signed-job/cron checks, and all 52 REST-adapter integration cases passed. The first emulator launcher was interrupted during a cache-path restart; its nine child suites completed with zero failed/cancelled tests, and the task-owned demo emulator was stopped afterwards. CI must still verify the clean end-to-end launcher. Use `FIREBASE_EMULATORS_PATH=$PWD/.cache/firebase/emulators` for future emulator runs. No real accounts, locations, alerts or deletion requests were created during these checks.
+Validation: 24 distinct Worker unit/security/privacy/capacity cases, five backend domain cases, actual local Worker JWT/OAuth/circle/signed-job/cron checks, and all 52 REST-adapter integration cases passed. The first emulator launcher was interrupted during a cache-path restart; its nine child suites completed with zero failed/cancelled tests, and the task-owned demo emulator was stopped afterwards. CI for `205e699` subsequently passed all jobs, including the clean end-to-end launcher. Use `FIREBASE_EMULATORS_PATH=$PWD/.cache/firebase/emulators` for future emulator runs. No real accounts, locations, alerts or deletion requests were created during these checks.
+
+## Public privacy and deletion pages — 30 October 2026
+
+Owner-approved public support/deletion email: **tahasaleemdev@gmail.com**.
+
+- Privacy policy: https://familyguard-privacy-support.paleluck4097.chatgpt.site/privacy/
+- Account deletion: https://familyguard-privacy-support.paleluck4097.chatgpt.site/delete-account/
+- Support home: https://familyguard-privacy-support.paleluck4097.chatgpt.site/
+
+Published with Sites as a public static site (no application database, plugins, form backend, analytics scripts or framework dependencies). Unauthenticated GETs to both policy pages returned HTTP 200 without sign-in redirects. The policy describes the current app's account/circle data, child background sharing, device status, notifications, third-party services, bounded expiry cleanup, local cache/queue data and deletion limitations. It does not promise immediate erasure or emergency-service response. The owner must keep the policy aligned with the eventual store listing, target audience and future data-handling changes.
+
+Deletion requests outside the app are **manual email requests**. The page provides prominent prefilled mail links and the address/subject for webmail users; opening a draft does not send or queue deletion. The owner must monitor this mailbox, verify account ownership, perform complete associated-data cleanup and reply to the requester. Do not ask users to email passwords, sign-in codes or circle invites. Do not delete just the Auth record while leaving associated data. No administrator mailbox-processing endpoint or automated email ingestion is exposed by this change.
+
+Site identity for updates (reuse it; never create a replacement just to edit):
+
+- Project: `appgprj_6ae4ce863fb48191b38bd3d87a86c716`.
+- Saved version: `appgprj_6ae4ce863fb48191b38bd3d87a86c716~appgver_709e546a3dd08191a5be0723d12f9c33` (version 1).
+- Deployment: `appgdep_6ae4d144080481918aa83fa3f1ebe6c5`, succeeded.
+- Source commit: `e67ce820776beffc53aa36e3787008338a6d17ba` in the separate Sites-managed repository.
+- Local source: `sites/familyguard-support/`, with its own `.git` and tracked `.openai/hosting.json`. Root `.gitignore` excludes `/sites/` to prevent nesting this repository into the Flutter app repository. Site edits must use its existing Sites identity and publishing workflow.
+- The packaged deployment is in ignored `build/familyguard-support.tar.gz`; regenerate it from the exact pushed Site source when editing. Never store source-repository credentials in files.
+
+App links appear before account creation on the auth screen and in Settings; Settings also exposes Contact support. Links use external browser/email handling with readable launch-failure messages and disposal guards. Validation includes 175 Flutter tests, clean whole-project and focused analysis, link-launch/privacy URL/large-text regressions, static checks for three pages and 33 local links/anchors, and browser checks at 320-pixel width with no horizontal overflow. Real-phone external browser/email acceptance remains pending. No support message was sent and no real account deletion was performed during validation.
 
 ## Official references
 
