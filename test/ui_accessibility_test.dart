@@ -62,6 +62,8 @@ void main() {
       expect(tester.takeException(), isNull);
     }
     final reveal = find.byTooltip('Show password');
+    expect(find.text('Privacy policy'), findsOneWidget);
+    expect(find.text('Account deletion'), findsOneWidget);
     await tester.ensureVisible(reveal);
     await tester.tap(reveal);
     await tester.pump();

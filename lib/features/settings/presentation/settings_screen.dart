@@ -15,6 +15,7 @@ import 'invite_rotation_control.dart';
 import 'account_deletion_control.dart';
 import 'push_status_card.dart';
 import '../../../core/services/map_tile_cache.dart';
+import '../../../core/presentation/privacy_support_links.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -331,6 +332,7 @@ class SettingsScreen extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 24),
+          const PrivacySupportLinks(),
           ListTile(
             leading: const Icon(Icons.layers_clear_outlined),
             title: const Text('Clear map cache'),

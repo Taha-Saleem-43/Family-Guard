@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/app_state_provider.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/presentation/setup_scroll_view.dart';
+import '../../../core/presentation/privacy_support_links.dart';
 import '../../../core/services/sharing_consent_service.dart';
 import '../../auth/domain/circle_model.dart';
 import '../../auth/providers/auth_providers.dart';
@@ -495,6 +496,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                const PrivacySupportLinks(showEmail: false),
               ],
             ),
           ],

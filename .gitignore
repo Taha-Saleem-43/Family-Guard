@@ -44,6 +44,8 @@ workers/build/
 .venv/
 android/.kotlin/
 .npm-cache/
+# Static support Site has its own managed source repository.
+/sites/
 
 # Symbolication related
 app.*.symbols
