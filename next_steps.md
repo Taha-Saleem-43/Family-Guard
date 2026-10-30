@@ -16,12 +16,12 @@ Ship a reliable, appealing Android family-location app on Google Play. Keep the 
 ## Exact Git state
 
 - Workspace: `D:\Flutter_Projects\Others\Family-Guard`.
-- Current branch: `taha/backend-cpu-headroom`, based on `taha/privacy-pages`.
-- Latest backend commit: `be439f4` — partition scheduled maintenance to reduce CPU per invocation; retain sampled diagnostics and capacity estimates.
-- Latest app commit: `5ac3c35` — link public privacy/account-deletion pages and support contact before sign-up and in Settings.
+- Current branch: `taha/circle-handoff`, based on `taha/backend-cpu-headroom`.
+- Latest backend/app commit: `7ed4183` — safe parent handoff and circle departure, including Settings confirmation, local consent fencing and transactional server checks.
+- Earlier CPU optimization `be439f4` and privacy/support links `5ac3c35` are included.
 - Remote main observed locally: `ebc00d4` — UI accessibility refinements.
 - Current branch contains the newer Workers backend, onboarding and map work. Integrate the final verified head once; do not independently merge every stacked predecessor branch.
-- CI for `205e699` (backend monitoring/capacity) and privacy-pages run `41099617428`: **all jobs passed**. Check the newer CPU branch CI after pushing.
+- CI for backend monitoring/capacity, privacy-pages and CPU branch run `41102588714`: **all jobs passed**. Check the newer circle-handoff branch CI after pushing.
 - CI evidence: https://github.com/Taha-Saleem-43/Family-Guard/actions/runs/41095353878
 - Backend and documentation commits follow that tested app commit. `next_steps.md` is the single maintained guide; the root README links here.
 
@@ -72,6 +72,7 @@ Password recovery update (13 October 2026): sign-in now offers a separate scroll
 - Installed flutter_map 7.0.2 was inspected: its default network provider has decoded-image memory caching, but no persistent HTTP cache. All three maps now use the shared SQLite tile cache with HTTP expiry/validators, a seven-day fallback, coalesced requests and a 128 MiB payload bound. Local tests cover restart persistence, conditional requests, no-store handling, eviction and deletion fencing. On-device network/cache acceptance is still pending; do not claim universal policy compliance from unit tests alone.
 - Android launcher display name is now **FamilyGuard**.
 - Public privacy and account-deletion pages are published, using `tahasaleemdev@gmail.com`; links are available before account creation and in Settings. Email requests require manual owner follow-up and ownership verification, not automatic deletion. See the publication details below.
+- Parent handoff/leave-circle is implemented in Settings. Verify the combined flow on controlled phones: select an existing co-parent, leave, confirm access/sharing stops and the signed-in account can set up a new circle. The last parent cannot leave children without another parent. See implementation notes below.
 - Continue device/TalkBack review across all flows. Place editing now passes a 320-pixel, 2× text and keyboard-inset regression; color choices have accessible labels/48-pixel targets, headings wrap, the radius announces meters, and directional buttons move the pin by 25 meters. History status/empty panels scroll when short of space.
 
 ### 2. Real-device acceptance — biggest engineering gap
@@ -209,6 +210,16 @@ The first partition version was `e37ab9c8-8178-4a70-ab84-8b3a52031a87`; the refi
 
 Validation: all **31 Worker unit/security/adapter/maintenance cases**, **5 backend domain cases**, dry-run bundle, and local Worker runtime JWT/OAuth/circle/signed-job/recovery/cleanup checks passed. Runtime asserts eight recovery and thirteen cleanup queries per idle tick. Three live health requests returned ready/HTTP 200 (371/95/29 ms wall time). Git diff whitespace checks passed. Flutter/native builds were not repeated for this backend/tooling-only change. Check this branch's CI after pushing.
 
+## Parent handoff and circle departure — 30 October 2026
+
+Implemented in `7ed4183`; deployed to the existing free Worker as version `bc36eef8-23e0-428c-95e2-a8c4bbdfd95a`. Settings exposes **Leave circle** to members. A parent with other members must explicitly select a current co-parent; children are never promoted. If no co-parent exists, invite a trusted adult using the existing parent invite first. Children can leave their own membership without changing anyone else's role. The sole remaining member can close the circle; its capped saved places, private configuration and invites are removed atomically. Historical points/events remain subject to existing retention and access rules; leaving is not account deletion.
+
+The callable checks Firebase Auth/App Check, expected UID, current profile/circle membership, deletion state, successor eligibility and active SOS. Concurrent departures cannot strand children without a parent. The selected parent receives the departing creator's circle reference when applicable. Every departure revokes both old invite codes and issues fresh seven-day codes to the remaining circle. Live profile coordinates/watermarks and the departing member's current location are cleared. A repeated request after successful departure is safe while the user remains without a circle; a request for an old circle cannot detach a different new circle.
+
+The app requires confirmation, blocks an observed active SOS before pausing tracking, checks account/circle changes while confirming, prevents duplicate submissions and handles uncertain network results honestly. Tracking stop deactivates the existing SQLite outbox and clears queued fixes. Cached sharing consent is revoked before the server request, including the lost-response case, and a late reply cannot clear a newer session's cache. Successful departure clears private circle state and returns the still-signed-in account to circle setup. Other members' devices must still receive their normal server stream updates; real-phone acceptance remains pending.
+
+Validation: 12 native Admin/emulator invite/departure cases, all **60 Worker REST-adapter integration cases**, **31 Worker unit/security cases**, actual Worker runtime checks, and the **180-test Flutter suite** passed. Final focused checks also passed for two new Auth-service fences, the active-SOS UI guard, dialog accessibility, duplicate requests and state reset. Whole-project analysis was clean; final widget tests compiled the subsequent SOS guard. No dependencies, Firestore rules/indexes, secrets, IAM, cron schedules or billing settings changed. No real circle, account, SOS, push recipient or deletion request was used. The task-owned local demo emulator was stopped after testing.
+
 ## Public privacy and deletion pages — 30 October 2026
 
 Owner-approved public support/deletion email: **tahasaleemdev@gmail.com**.
@@ -269,7 +280,7 @@ Place editing adds labelled 48-pixel color choices, wrapping headings, a spoken 
 
 Auth is the identity authority. Preferences cache display data only. Membership, roles, SOS and trusted ingestion remain server-owned. Preserve injectable services and clocks, account/circle fencing, original capture timestamps, idempotent retries and the shared foreground/headless upload policy.
 
-Consent is scoped to the account, sign-in and circle. Parents avoid child location prompts. Children cannot hand off another member's location. Parent history is restricted to the recorded circle; never infer legacy point provenance from current membership. A dedicated parent handoff/leave-circle flow is still a product gap; existing surviving circles with no parent enter `requiresParent` recovery.
+Consent is scoped to the account, sign-in and circle. Parents avoid child location prompts. Children cannot hand off another member's location. Parent history is restricted to the recorded circle; never infer legacy point provenance from current membership. Parent handoff/leave-circle is implemented; existing surviving circles left parentless by account deletion can still enter `requiresParent` recovery.
 
 The Worker supports the current private subcollections and stores deletion cleanup stages. Extend deletion steps/tests whenever adding new private data. Minute recovery sweeps resume signed jobs; half-hour sweeps prune expired records in bounded batches. Empty sweeps still consume Firestore reads, and expired-history cleanup is bounded (previous configured maximum: 9,600 points/day). Measure actual capacity before launch.
 
