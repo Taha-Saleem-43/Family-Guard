@@ -5,6 +5,7 @@ import firestore from "./firestore.cjs";
 import jobs from "./jobs.cjs";
 import accountsModule from "../../functions/features/accounts.js";
 import observability from "./observability.cjs";
+import maintenanceModule from "./maintenance.cjs";
 const { observed } = observability;
 
 const { scope, db } = state;
@@ -113,87 +114,7 @@ function drainCreatedEvents(ctx) {
   if (!scope.getStore().created.length) return;
   ctx.waitUntil(observed("background", "createdEvents", createdEvents).catch(() => {}));
 }
-async function maintenance(cleanupOnly = false) {
-  // Recover fanout if a request terminated after its source document commit.
-  const cutoff = Date.now() - 15 * 60000;
-  if (!cleanupOnly) {
-    for (const [collection, time, trigger] of [
-      ["sos_alerts", new Date(cutoff).toISOString(), "enqueueSosPush"],
-      [
-        "placeEvents",
-        firestore.Timestamp.fromMillis(cutoff),
-        "enqueuePlacePush",
-      ],
-    ]) {
-      const docs = await db
-        .collection(collection)
-        .where("timestamp", ">=", time)
-        .where("pushFanoutPending", "==", true)
-        .limit(4)
-        .get();
-      for (const pending of docs.docs)
-        await jobs.dispatch(scope.getStore().env, trigger, pending.id);
-    }
-    for (const [collection, trigger] of [
-      ["sosPushDeliveries", "deliverSosPush"],
-      ["placePushDeliveries", "deliverPlacePush"],
-      ["accountDeletions", "processAccountDeletion"],
-    ]) {
-      const limit = collection === "accountDeletions" ? 1 : 6;
-      let pendingQuery = db
-        .collection(collection)
-        .where("status", "==", "pending");
-      if (collection !== "accountDeletions")
-        pendingQuery = pendingQuery.where(
-          "nextAttemptAt",
-          "<=",
-          firestore.Timestamp.now(),
-        );
-      const pending = await pendingQuery.limit(limit).get();
-      const stalled = await db
-        .collection(collection)
-        .where("status", "==", "processing")
-        .where("leaseUntil", "<=", firestore.Timestamp.now())
-        .limit(limit)
-        .get();
-      for (const doc of [...pending.docs, ...stalled.docs])
-        await jobs
-          .dispatch(scope.getStore().env, trigger, doc.id)
-          .catch(() => {});
-    }
-    return;
-  }
-  // Spark has no billed TTL job: bounded cleanup uses ordinary free-quota writes.
-  for (const collection of [
-    "sosPushDeliveries",
-    "placePushDeliveries",
-    "pushDevices",
-    "accountDeletions",
-    "inviteAttempts",
-    "circleInvites",
-    "placePresence",
-    "placeEvents",
-    "sos_alerts",
-    "points",
-  ]) {
-    const query =
-      collection === "points"
-        ? db.collectionGroup(collection)
-        : db.collection(collection);
-    const docs = await query
-      .where(
-        collection === "circleInvites" ? "expiresAt" : "expireAt",
-        "<=",
-        firestore.Timestamp.now(),
-      )
-      .limit(collection === "points" ? 200 : 10)
-      .get();
-    if (docs.empty) continue;
-    const batch = db.batch();
-    for (const doc of docs.docs) batch.delete(doc.ref);
-    await batch.commit();
-  }
-}
+const maintenance = maintenanceModule.createMaintenance({ db, Timestamp: firestore.Timestamp, dispatch: jobs.dispatch });
 async function handleFetch(request, env, ctx) {
   const path = new URL(request.url).pathname;
   if (request.method === "GET" && path === "/health")
@@ -208,7 +129,11 @@ async function handleFetch(request, env, ctx) {
     if (!job) return response({ error: { status: "UNAUTHENTICATED" } }, 401);
     try {
       return await scoped(env, async () => {
-        if (job.name === "processAccountDeletion")
+        if (job.name === "recoverMaintenance")
+          await maintenance.recover(job.id, env);
+        else if (job.name === "cleanupExpired")
+          await maintenance.cleanup(job.id);
+        else if (job.name === "processAccountDeletion")
           await accountJobs.process(job.id);
         else
           await backend[job.name]({
@@ -273,7 +198,7 @@ export default {
   async scheduled(event, env, ctx) {
     ctx.waitUntil(
       observed("maintenance", event.cron === "*/30 * * * *" ? "cleanup" : "recovery",
-        () => scoped(env, () => maintenance(event.cron === "*/30 * * * *")))
+        () => scoped(env, () => maintenance.sweep(env, event.cron === "*/30 * * * *")))
         .catch(() => {}),
     );
   },

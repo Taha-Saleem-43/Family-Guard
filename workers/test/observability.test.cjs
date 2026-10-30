@@ -4,9 +4,20 @@ const { observation, increment, countFirestoreReads } = require("../src/observab
 const { estimate } = require("../src/capacity.cjs");
 const { health } = require("../../scripts/backend-capacity.cjs");
 const { GoogleClient } = require("../src/google.cjs");
-const { metrics } = require("../../scripts/worker-metrics.cjs");
+const { metrics, existingToken } = require("../../scripts/worker-metrics.cjs");
 const { readFileSync } = require("node:fs");
 const { resolve } = require("node:path");
+
+test("metric credentials use the supported CLI without displaying or persisting its output", () => {
+  const token = existingToken({ env: {}, run: (_, args, options) => {
+    assert.deepEqual(args.slice(-3), ["auth", "token", "--json"]);
+    assert.deepEqual(options.stdio, ["ignore", "pipe", "pipe"]);
+    assert.match(options.env.XDG_CONFIG_HOME, /\.cache[\\/]cloudflare$/);
+    return { status: 0, stdout: JSON.stringify({ type: "oauth", token: "test-only-credential" }) };
+  } });
+  assert.equal(token, "test-only-credential");
+  assert.throws(() => existingToken({ env: {}, run: () => ({ status: 0, stdout: 'private-token invalid JSON' }) }), /^Error: Existing Wrangler credential unavailable$/);
+});
 
 test("deployment keeps log volume sampled and automatic URL/tracing logs disabled", () => {
   const config = JSON.parse(readFileSync(resolve(__dirname, "../wrangler.jsonc"), "utf8").replace(/,\s*([}\]])/g, "$1"));
@@ -76,8 +87,8 @@ test("Google instrumentation counts RPCs and attempted writes without recording 
 
 test("capacity planning accounts for idle cron reads and flags exhausted targets", () => {
   const small = estimate();
-  assert.equal(small.baseline.idleReadsLowerBound, 12000);
-  assert.equal(small.baseline.scheduledRequests, 1488);
+  assert.equal(small.baseline.idleReadsLowerBound, 12144);
+  assert.equal(small.baseline.scheduledRequests, 13632);
   assert.equal(small.fixesPerChild, 230);
   assert.equal(small.withinModeledTargets, true);
   const busy = estimate({ children: 10, trackingHours: 24, movingHours: 24 });
@@ -124,4 +135,11 @@ test("provider metrics expose only numeric aggregates and preserve unavailable s
   assert.equal(unavailable.available, false);
   assert.equal(unavailable.requests, undefined);
   assert.doesNotMatch(JSON.stringify(unavailable), /private/);
+  const scoped = await metrics("private-token", { now, since: "2026-10-30T11:00:00Z", fetcher: async (_, options) => {
+    assert.equal(JSON.parse(options.body).variables.start, "2026-10-30T11:00:00.000Z");
+    return new Response(JSON.stringify({ data: { viewer: { accounts: [{ workersInvocationsAdaptive: [] }] } } }));
+  } });
+  assert.equal(scoped.hasData, false);
+  await assert.rejects(metrics("private-token", { now, since: "invalid" }));
+  await assert.rejects(metrics("private-token", { now, since: "2026-10-31T00:00:00Z" }));
 });

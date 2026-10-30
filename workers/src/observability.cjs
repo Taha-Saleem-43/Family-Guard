@@ -11,6 +11,7 @@ const operations = new Set([
   "acknowledgeSosPush", "acknowledgePlacePush", "createCircle", "joinCircle",
   "enqueueSosPush", "enqueuePlacePush", "deliverSosPush", "deliverPlacePush",
   "processAccountDeletion",
+  "recoverMaintenance", "cleanupExpired",
 ]);
 const kinds = new Set(["http", "job", "background", "maintenance"]);
 const counterNames = [

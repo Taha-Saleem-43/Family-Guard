@@ -160,6 +160,16 @@ test("health reports missing configuration without disclosing credentials", asyn
   assert.deepEqual(await response.json(), { status: "configuration-required" });
 });
 
+test("maintenance jobs require a valid signature and a fixed partition ID", async () => {
+  for (const [name, id, allowed] of [["recoverMaintenance", "sosFanout", true], ["cleanupExpired", "points", true], ["cleanupExpired", "users", false], ["recoverMaintenance", "private-user", false]]) {
+    const path = `/_jobs/${name}/${id}`, time = String(Date.now());
+    const signature = createHmac("sha256", env.GOOGLE_SERVICE_ACCOUNT).update(time + "\n" + path).digest("hex");
+    const request = new Request("https://worker.test" + path, { method: "POST", headers: { "X-Job-Time": time, "X-Job-Signature": signature } });
+    assert.equal(validJob(request, env) !== null, allowed);
+    assert.equal((await call(path, { data: {} })).status, 401);
+  }
+});
+
 test("HTTP diagnostics redact tokens, query strings, payloads and internal job IDs", async () => {
   const previous = console.log;
   const records = [];

@@ -1,11 +1,14 @@
 const { createHmac, timingSafeEqual } = require("node:crypto");
 const { increment } = require("./observability.cjs");
+const { recoveryIds, legacyRecoveryIds, cleanupCollections } = require("./maintenance.cjs");
 const allowed = new Set([
   "enqueueSosPush",
   "enqueuePlacePush",
   "deliverSosPush",
   "deliverPlacePush",
   "processAccountDeletion",
+  "recoverMaintenance",
+  "cleanupExpired",
 ]);
 const endpoint = "https://family-guard-api.tahasaleem981.workers.dev";
 function signature(env, path, time) {
@@ -22,6 +25,8 @@ function validJob(request, env) {
     !allowed.has(name) ||
     !id ||
     !/^[A-Za-z0-9_-]{1,128}$/.test(id) ||
+    (name === "recoverMaintenance" && !recoveryIds.includes(id) && !legacyRecoveryIds.includes(id)) ||
+    (name === "cleanupExpired" && !cleanupCollections.includes(id)) ||
     path !== `/_jobs/${name}/${id}`
   )
     return null;

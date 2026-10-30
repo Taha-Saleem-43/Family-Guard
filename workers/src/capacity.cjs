@@ -1,7 +1,8 @@
 // Planning estimates, not measured quotas or a supported launch-size promise.
+const { recoveryIds, cleanupCollections, historyPages, historyPageSize } = require("./maintenance.cjs");
 const limits = Object.freeze({
   workerRequests: 100000, firestoreReads: 50000, firestoreWrites: 20000,
-  firestoreDeletes: 20000, historyCleanup: 9600,
+  firestoreDeletes: 20000, historyCleanup: 48 * historyPages * historyPageSize,
 });
 const defaults = Object.freeze({
   children: 3, trackingHours: 8, movingHours: 1,
@@ -24,9 +25,10 @@ function estimate(input = {}) {
   if (scenario.trackingHours > 24 || scenario.movingHours > scenario.trackingHours || scenario.headroom >= 1 ||
       scenario.retryMultiplier < 1 || scenario.movingIntervalSeconds < 1 || scenario.stationaryIntervalSeconds < 1 ||
       scenario.fixesPerUpload < 1 || scenario.fixesPerUpload > 50) throw new Error("Invalid tracking, retry, batch or headroom assumption.");
-  // Current schedules: recovery 1,440/day × eight queries; cleanup 48/day × ten.
-  const scheduledRequests = 1440 + 48;
-  const idleReadsLowerBound = 1440 * 8 + 48 * 10;
+  const cleanupPartitions = cleanupCollections.length + historyPages - 1;
+  // Include both cron coordinators AND every signed child invocation.
+  const scheduledRequests = 1440 * (1 + recoveryIds.length) + 48 * (1 + cleanupPartitions);
+  const idleReadsLowerBound = 1440 * 8 + 48 * cleanupPartitions;
   const fixesPerChild = Math.ceil(scenario.movingHours * 3600 / scenario.movingIntervalSeconds +
     (scenario.trackingHours - scenario.movingHours) * 3600 / scenario.stationaryIntervalSeconds) + scenario.extraFixesPerChild;
   const fixes = scenario.children * fixesPerChild;

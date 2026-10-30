@@ -58,6 +58,9 @@ const mf = new Miniflare(
         bindings: env,
         outboundService: async (request) => {
           const url = new URL(request.url);
+          if (url.hostname === "family-guard-api.tahasaleem981.workers.dev") {
+            return mf.dispatchFetch("https://worker.test" + url.pathname, { method: request.method, headers: request.headers });
+          }
           let data;
           if (
             url.pathname.endsWith("/jwks") ||
@@ -149,7 +152,7 @@ const mf = new Miniflare(
     assert.equal(queries - beforeRecovery, 8, "idle recovery query count changed; update capacity baseline");
     const beforeCleanup = queries;
     await service.scheduled({ cron: "*/30 * * * *" });
-    assert.equal(queries - beforeCleanup, 10, "idle cleanup query count changed; update capacity baseline");
+    assert.equal(queries - beforeCleanup, 13, "idle cleanup query count changed; update capacity baseline");
     console.log(
       "Workers runtime: JWT/OAuth, circle creation, signed jobs and both idle cron capacity baselines passed.",
     );
