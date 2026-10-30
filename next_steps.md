@@ -1,6 +1,6 @@
 # FamilyGuard — handoff and next steps
 
-Updated: 13 October 2026. Read this first when continuing in a new chat.
+Updated: 30 October 2026. Read this first when continuing in a new chat.
 
 ## Goal and owner preferences
 
@@ -16,13 +16,14 @@ Ship a reliable, appealing Android family-location app on Google Play. Keep the 
 ## Exact Git state
 
 - Workspace: `D:\Flutter_Projects\Others\Family-Guard`.
-- Current branch: `taha/offline-map-polish`, based on `taha/password-recovery`.
+- Current branch: `taha/backend-observability`, based on `taha/offline-map-polish`.
+- Latest backend commit: `df43cf8` — sampled operational diagnostics, offline capacity estimates and read-only aggregate metrics.
 - Latest app commit: `e5b15c2` — bundle offline fonts, persist viewed map tiles, unify attribution and improve accessible place editing.
 - Remote main observed locally: `ebc00d4` — UI accessibility refinements.
 - Current branch contains the newer Workers backend, onboarding and map work. Integrate the final verified head once; do not independently merge every stacked predecessor branch.
-- Historical CI for `1ccc451`: **Android, Flutter and Firebase/backend jobs all passed**. New branch CI must be checked after pushing; do not treat the historical run as evidence for newer code.
-- CI evidence: https://github.com/Taha-Saleem-43/Family-Guard/actions/runs/38085743389
-- Documentation-only commits follow that tested app commit. `next_steps.md` is the single maintained guide; the root README links here.
+- CI for `b76f58c` (offline map/font work): **all jobs passed**. Check the newer backend branch CI after pushing.
+- CI evidence: https://github.com/Taha-Saleem-43/Family-Guard/actions/runs/38430580617
+- Backend and documentation commits follow that tested app commit. `next_steps.md` is the single maintained guide; the root README links here.
 
 ## Implemented
 
@@ -97,7 +98,8 @@ Do not silently trigger emergencies on real family accounts. Use isolated consen
 - Run an eight-hour stationary battery test and a one-hour moving route; record accuracy, capture-to-server delay and missed transitions.
 - Previous short phone measurements on an older profile build: first frame about 2.99 seconds, settled CPU samples 0–1.6% of one core. These are not current-build or battery acceptance results.
 - Measure actual Cloudflare CPU, errors, Firestore reads/writes and cleanup throughput under representative bounded load; define a supported launch size.
-- Add useful privacy-safe operational monitoring and quota visibility. Worker observability is currently disabled in configuration.
+- Sampled monitoring is deployed: 10% custom operation summaries, automatic invocation logs/tracing/issues disabled and query strings redacted. Offline capacity and read-only aggregate metrics commands are documented below. This does not provide an exact Firestore billing ledger or guaranteed incident alerts.
+- **CPU headroom is a launch concern:** the day-to-date aggregate snapshot on 30 October showed median 7.179 ms / P99 13.061 ms CPU, with zero runtime errors. P99 exceeds the nominal 10 ms Free limit; isolate flexibility is not a sustainable capacity plan. Attribute costly operations and reduce/partition high-CPU work before increasing launch traffic. Current mostly-maintenance traffic is not representative user load.
 - Workers Free documented limits: 100,000 requests/day, 10 ms CPU per invocation, 50 subrequests. Firebase Spark and cron cleanup also impose finite capacity. Reverify provider limits before capacity decisions.
 
 ### 4. Production identity, signing and signed-build verification
@@ -164,6 +166,33 @@ Run durable SQLite tests from `tool/sqlite_tests`. Backend and Worker commands a
 - Older standalone regression reports were removed; current verification results and remaining acceptance limits are summarized here.
 - Ignored device logs/screenshots may contain private family data; never commit them.
 
+## Backend monitoring and capacity — 30 October 2026
+
+Deployed commit `df43cf8` to the existing Worker, version `b192f648-8b2d-4f96-b189-ff99a7aed6a3`. Encrypted secrets, IAM roles, cron schedules and billing were not changed; no new resources or dependencies were added. API readback confirmed 10% sampling, query-string redaction and disabled invocation logs/traces/issues. Three serial post-deployment health requests returned ready/HTTP 200 (299/110/42 ms wall time). These do not test authenticated create/join/ingest latency or device delivery.
+
+Custom log schema `familyguard.operation` contains only an allowlisted operation/kind, HTTP status, wall time and numeric counters. It omits account/job/document IDs, coordinates, names, emails, tokens, payloads and error messages. HTTP, signed jobs, background dispatch and maintenance have separate invocation-local counters; pending I/O is not shared. Read counts are a lower bound for successful batchGet/runQuery results, including a one-read empty-query minimum. Write/delete counters are attempts, not confirmed billed operations. Cloudflare adds platform metadata; these are diagnostic summaries, not a complete billing ledger. A 200 delivery-job response does not establish device receipt.
+
+Commands use existing project-local Node dependencies and auth:
+
+```powershell
+# Offline, safe to repeat; optional argument is a JSON scenario file.
+& 'C:/Program Files/nodejs/node.exe' scripts/backend-capacity.cjs
+# Exactly three serial GETs to /health; no Auth/Firestore/SOS operations.
+& 'C:/Program Files/nodejs/node.exe' scripts/backend-capacity.cjs --live-health
+# One read-only Cloudflare aggregate query, UTC midnight through now.
+& 'C:/Program Files/nodejs/node.exe' scripts/worker-metrics.cjs
+```
+
+The metrics exporter keeps credentials in memory and emits numeric aggregates only. It reuses `.cache/cloudflare/.wrangler/config/default.toml` (or an explicitly supplied environment token), never prints tokens or creates permissions. If auth expires, use existing Wrangler login/refresh with the local XDG cache; missing metrics are reported unavailable, never zero. A transient unavailable response was observed during this session; a later read succeeded. No new token/key or monitoring service is required.
+
+Verified aggregate snapshot at 2026-10-30T16:57:48Z: 1,046 requests, zero runtime errors, 8,428 subrequests; CPU median 7.179 ms / P99 13.061 ms. CPU quantile units were verified from the live provider GraphQL field descriptions (microseconds) before conversion. This spans the day's mostly idle scheduled traffic and only moments after deployment; it cannot establish monitoring overhead, a supported launch size, per-invocation maxima or performance under user load.
+
+Current idle schedule costs are tested in the actual local Worker runtime: eight empty queries per minute plus ten every half hour = **12,000 minimum Firestore reads/day**, with 1,488 scheduled invocations/day. Empty queries still consume reads. History cleanup remains bounded to 9,600 points/day. The default offline example assumes three children, eight tracking hours (one moving), 45/180-second moving/stationary intervals, ten extra fixes/child, two listener reads/fix, 10% retry overhead, extra daily traffic and 30% budget headroom. It estimates 690 unique points/day, 19,934 reads/day and 3,277 writes/day. Assumptions are editable; CPU, real listener/reconnect/index/rules costs, storage/bandwidth, bursts and fanout remain unvalidated. A within-target estimate is not launch approval.
+
+As checked on 30 October, official limits list Workers Free 100,000 requests/day, 10 ms CPU and 50 subrequests per invocation; Firestore free quotas include 50,000 reads, 20,000 writes and 20,000 deletes/day. Workers Logs currently includes 200,000 events/day and three-day retention on Free. Cloudflare announces observability pricing changes from 1 December 2026: recheck terms before that date and never enable a paid plan without owner approval.
+
+Validation: 24 distinct Worker unit/security/privacy/capacity cases, five backend domain cases, actual local Worker JWT/OAuth/circle/signed-job/cron checks, and all 52 REST-adapter integration cases passed. The first emulator launcher was interrupted during a cache-path restart; its nine child suites completed with zero failed/cancelled tests, and the task-owned demo emulator was stopped afterwards. CI must still verify the clean end-to-end launcher. Use `FIREBASE_EMULATORS_PATH=$PWD/.cache/firebase/emulators` for future emulator runs. No real accounts, locations, alerts or deletion requests were created during these checks.
+
 ## Official references
 
 - Play registration: https://support.google.com/googleplay/android-developer/answer/6112435
@@ -171,6 +200,8 @@ Run durable SQLite tests from `tool/sqlite_tests`. Backend and Worker commands a
 - Workers limits: https://developers.cloudflare.com/workers/platform/limits/
 - Firebase pricing/quotas: https://firebase.google.com/pricing
 - OpenStreetMap attribution and tile policy: https://operations.osmfoundation.org/policies/tiles/
+- Worker metrics: https://developers.cloudflare.com/analytics/graphql-api/tutorials/querying-workers-metrics/
+- Worker logs, sampling and pricing: https://developers.cloudflare.com/workers/observability/logs/workers-logs/
 - Bundled Nunito source/license: https://github.com/google/fonts/tree/main/ofl/nunito . Weights 400–900 are static instances of the official variable font, generated with fontTools 4.60.1 in the project `.venv`; the complete OFL is included in assets and the in-app license registry.
 
 ## Offline maps/fonts and accessibility verification — 13 October 2026
@@ -234,6 +265,6 @@ Integrated the useful ideas into the current code:
 - Short segments show < 1 min; a single point says Captured at rather than claiming an arrival. Distance still comes from coordinates.
 - Place setup lets the user explicitly choose a family member with fresh valid coordinates and recenter on that last shared position. The source name and time are shown. Existing places keep their saved position until the user explicitly changes it. No new location permission or external search service is introduced.
 
-Address search remains optional future work. The old public Nominatim calls need a deliberate compliant provider decision, shared throttling, caching, attribution, cancellation and protection against stale results. Old branding assets are optional alternatives; current onboarding is more robust. The old copy directory and Tracelet spike are unchanged. A service-account key exists at the copy directory root; handle that credential separately before deleting/archive-sharing the folder.
+Address search remains optional future work. The old public Nominatim calls need a deliberate compliant provider decision, shared throttling, caching, attribution, cancellation and protection against stale results. The owner reported deleting the old copy on 30 October. Its useful history/place ideas were already integrated; no further work depends on that folder. These review notes are historical, not instructions to reopen the deleted copy.
 
 Validation: 28 focused history/place tests passed; added regressions cover route filtering/reset, honest short durations and member selection/recentering. Final UI card/Show all pagination checks and analysis are run before pushing. Device visual acceptance remains pending.

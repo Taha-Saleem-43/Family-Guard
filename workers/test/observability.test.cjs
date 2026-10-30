@@ -117,6 +117,8 @@ test("provider metrics expose only numeric aggregates and preserve unavailable s
   } });
   assert.equal(report.requests, 50);
   assert.equal(report.cpuTimeP50Raw, 100);
+  assert.equal(report.cpuTimeP50Ms, 0.1);
+  assert.equal(report.cpuTimeP99Ms, 0.5);
   assert.doesNotMatch(JSON.stringify(report), /private/);
   const unavailable = await metrics("private-token", { fetcher: async () => new Response(JSON.stringify({ errors: [{ message: "private-data" }] }), { status: 403 }) });
   assert.equal(unavailable.available, false);
