@@ -345,8 +345,7 @@ function createAccountDeletionHandlers(
           await this.process(job.id);
         } catch (error) {
           console.error("Account deletion retry failed", {
-            jobId: job.id,
-            code: error.code ?? "internal",
+            retryPending: true,
           });
         }
       }

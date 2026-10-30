@@ -159,3 +159,20 @@ test("health reports missing configuration without disclosing credentials", asyn
   assert.equal(response.status, 503);
   assert.deepEqual(await response.json(), { status: "configuration-required" });
 });
+
+test("HTTP diagnostics redact tokens, query strings, payloads and internal job IDs", async () => {
+  const previous = console.log;
+  const records = [];
+  console.log = (record) => records.push(record);
+  try {
+    await call("/_jobs/deliverSosPush/private-job?token=private-secret", { data: { email: "private@example.invalid" } });
+    await call("/private-unknown-path", { data: {} });
+    assert.equal(records.length, 2);
+    assert.equal(records[0].operation, "deliverSosPush");
+    assert.equal(records[0].status, 401);
+    assert.equal(records[1].operation, "unknown");
+    assert.doesNotMatch(JSON.stringify(records), /private|email|Bearer|eyJ/);
+  } finally {
+    console.log = previous;
+  }
+});

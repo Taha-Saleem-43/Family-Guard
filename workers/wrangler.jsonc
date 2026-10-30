@@ -22,5 +22,12 @@
     "firebase-functions/v2/firestore": "./src/firebase-shim.cjs",
     "firebase-functions/v2/scheduler": "./src/firebase-shim.cjs",
   },
-  "observability": { "enabled": false },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 0.1,
+    "redact_query_string": true,
+    "logs": { "enabled": true, "invocation_logs": false },
+    "traces": { "enabled": false },
+    "issues": { "enabled": false },
+  },
 }

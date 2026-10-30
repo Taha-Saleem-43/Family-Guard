@@ -202,7 +202,7 @@ function createPushHandlers(db, messaging, kind = 'sos') {
       for (let offset = 0; offset < jobs.length; offset += 5) {
         await Promise.all(jobs.slice(offset, offset + 5).map(async (job) => {
           try { await handlers.process(job.id); } catch (error) {
-            console.error('Push delivery retry failed', { jobId: job.id, code: error.code ?? 'internal' });
+            console.error('Push delivery retry failed', { retryPending: true });
           }
         }));
       }

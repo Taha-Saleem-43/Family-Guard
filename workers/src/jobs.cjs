@@ -1,4 +1,5 @@
 const { createHmac, timingSafeEqual } = require("node:crypto");
+const { increment } = require("./observability.cjs");
 const allowed = new Set([
   "enqueueSosPush",
   "enqueuePlacePush",
@@ -47,15 +48,21 @@ async function dispatch(env, name, id) {
     throw new Error("Invalid background job");
   const path = `/_jobs/${name}/${id}`,
     time = String(Date.now());
-  const result = await fetch(endpoint + path, {
-    method: "POST",
-    headers: {
-      "X-Job-Time": time,
-      "X-Job-Signature": signature(env, path, time),
-    },
-    signal: AbortSignal.timeout(25000),
-  });
-  await result.body?.cancel();
-  if (!result.ok) throw new Error("Background job remains pending");
+  increment("jobDispatches");
+  try {
+    const result = await fetch(endpoint + path, {
+      method: "POST",
+      headers: {
+        "X-Job-Time": time,
+        "X-Job-Signature": signature(env, path, time),
+      },
+      signal: AbortSignal.timeout(25000),
+    });
+    await result.body?.cancel();
+    if (!result.ok) throw new Error("Background job remains pending");
+  } catch (error) {
+    increment("dispatchFailures");
+    throw error;
+  }
 }
 module.exports = { validJob, dispatch };

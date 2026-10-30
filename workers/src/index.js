@@ -4,6 +4,8 @@ import google from "./google.cjs";
 import firestore from "./firestore.cjs";
 import jobs from "./jobs.cjs";
 import accountsModule from "../../functions/features/accounts.js";
+import observability from "./observability.cjs";
+const { observed } = observability;
 
 const { scope, db } = state;
 const { GoogleClient, ApiError, verifyRequest } = google;
@@ -107,6 +109,10 @@ async function createdEvents() {
     }
   }
 }
+function drainCreatedEvents(ctx) {
+  if (!scope.getStore().created.length) return;
+  ctx.waitUntil(observed("background", "createdEvents", createdEvents).catch(() => {}));
+}
 async function maintenance(cleanupOnly = false) {
   // Recover fanout if a request terminated after its source document commit.
   const cutoff = Date.now() - 15 * 60000;
@@ -188,88 +194,87 @@ async function maintenance(cleanupOnly = false) {
     await batch.commit();
   }
 }
-export default {
-  async fetch(request, env, ctx) {
-    const path = new URL(request.url).pathname;
-    if (request.method === "GET" && path === "/health")
-      return response(
-        { status: configured(env) ? "ready" : "configuration-required" },
-        configured(env) ? 200 : 503,
-      );
-    if (request.method === "OPTIONS")
-      return new Response(null, { status: 204, headers });
-    if (path.startsWith("/_jobs/")) {
-      const job = jobs.validJob(request, env);
-      if (!job) return response({ error: { status: "UNAUTHENTICATED" } }, 401);
-      try {
-        return await scoped(env, async () => {
-          if (job.name === "processAccountDeletion")
-            await accountJobs.process(job.id);
-          else
-            await backend[job.name]({
-              params: {
-                [job.name.includes("Sos")
-                  ? "alertId"
-                  : job.name.includes("Place")
-                    ? "eventId"
-                    : "deliveryId"]: job.id,
-                deliveryId: job.id,
-              },
-            });
-          ctx.waitUntil(createdEvents().catch(() => {}));
-          return response({ accepted: true });
-        });
-      } catch (_) {
-        return response({ error: { status: "UNAVAILABLE" } }, 503);
-      }
-    }
-    const name = path.slice(1),
-      handler = backend[name];
-    if (
-      request.method !== "POST" ||
-      !Object.hasOwn(backend, name) ||
-      handler?.kind !== "callable"
-    )
-      return response(
-        { error: { status: "NOT_FOUND", message: "Unknown operation." } },
-        404,
-      );
+async function handleFetch(request, env, ctx) {
+  const path = new URL(request.url).pathname;
+  if (request.method === "GET" && path === "/health")
+    return response(
+      { status: configured(env) ? "ready" : "configuration-required" },
+      configured(env) ? 200 : 503,
+    );
+  if (request.method === "OPTIONS")
+    return new Response(null, { status: 204, headers });
+  if (path.startsWith("/_jobs/")) {
+    const job = jobs.validJob(request, env);
+    if (!job) return response({ error: { status: "UNAUTHENTICATED" } }, 401);
     try {
-      const verified = await verifyRequest(request, env);
-      const data = await body(request);
       return await scoped(env, async () => {
-        const result = await handler({ ...verified, data });
-        ctx.waitUntil(
-          createdEvents().catch((error) =>
-            console.error("Background job deferred", {
-              code: error.code || "internal",
-            }),
-          ),
-        );
-        return response({ result });
+        if (job.name === "processAccountDeletion")
+          await accountJobs.process(job.id);
+        else
+          await backend[job.name]({
+            params: {
+              [job.name.includes("Sos")
+                ? "alertId"
+                : job.name.includes("Place")
+                  ? "eventId"
+                  : "deliveryId"]: job.id,
+              deliveryId: job.id,
+            },
+          });
+        drainCreatedEvents(ctx);
+        return response({ accepted: true });
       });
-    } catch (error) {
-      const code = statusCodes[error.code] ? error.code : "internal";
-      const message =
-        code === "internal"
-          ? "Unable to complete this request."
-          : error.name === "Error" && !(error instanceof ApiError)
-            ? error.message
-            : "Unable to complete this request. Check your account and app configuration.";
-      return response(
-        { error: { status: code.replaceAll("-", "_").toUpperCase(), message } },
-        statusCodes[code] || 500,
-      );
+    } catch (_) {
+      return response({ error: { status: "UNAVAILABLE" } }, 503);
     }
+  }
+  const name = path.slice(1),
+    handler = backend[name];
+  if (
+    request.method !== "POST" ||
+    !Object.hasOwn(backend, name) ||
+    handler?.kind !== "callable"
+  )
+    return response(
+      { error: { status: "NOT_FOUND", message: "Unknown operation." } },
+      404,
+    );
+  try {
+    const verified = await verifyRequest(request, env);
+    const data = await body(request);
+    return await scoped(env, async () => {
+      const result = await handler({ ...verified, data });
+      drainCreatedEvents(ctx);
+      return response({ result });
+    });
+  } catch (error) {
+    const code = statusCodes[error.code] ? error.code : "internal";
+    const message =
+      code === "internal"
+        ? "Unable to complete this request."
+        : error.name === "Error" && !(error instanceof ApiError)
+          ? error.message
+          : "Unable to complete this request. Check your account and app configuration.";
+    return response(
+      { error: { status: code.replaceAll("-", "_").toUpperCase(), message } },
+      statusCodes[code] || 500,
+    );
+  }
+}
+export default {
+  fetch(request, env, ctx) {
+    const path = new URL(request.url).pathname;
+    const job = path.startsWith("/_jobs/");
+    const operation = path === "/health" ? "health"
+      : request.method === "OPTIONS" ? "preflight"
+      : job ? path.split("/")[2] : path.slice(1);
+    return observed(job ? "job" : "http", operation, () => handleFetch(request, env, ctx));
   },
   async scheduled(event, env, ctx) {
     ctx.waitUntil(
-      scoped(env, () => maintenance(event.cron === "*/30 * * * *")).catch(
-        (error) =>
-          console.error("Maintenance deferred", {
-            code: error.code || "internal",
-          }),
-      ),
+      observed("maintenance", event.cron === "*/30 * * * *" ? "cleanup" : "recovery",
+        () => scoped(env, () => maintenance(event.cron === "*/30 * * * *")))
+        .catch(() => {}),
     );
   },
 };

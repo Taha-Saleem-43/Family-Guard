@@ -43,6 +43,7 @@ const app = signed({
   sub: "runtime-app",
 });
 let commits = 0;
+let queries = 0;
 const testBundle = resolve(__dirname, "../../build/workers/index.js");
 const mf = new Miniflare(
   convertV4MiniflareOptions({
@@ -84,6 +85,9 @@ const mf = new Miniflare(
               commits++;
               assert.ok(input.writes.length === 0 || input.writes.length >= 4);
               data = {};
+            } else if (url.pathname.endsWith(":runQuery")) {
+              queries++;
+              data = [];
             } else throw new Error("Unexpected Firestore operation");
           } else
             throw new Error("External network request blocked in runtime test");
@@ -139,8 +143,15 @@ const mf = new Miniflare(
         `${name} failed: ${await result.text()}`,
       );
     }
+    const service = await mf.getWorker();
+    const beforeRecovery = queries;
+    await service.scheduled({ cron: "* * * * *" });
+    assert.equal(queries - beforeRecovery, 8, "idle recovery query count changed; update capacity baseline");
+    const beforeCleanup = queries;
+    await service.scheduled({ cron: "*/30 * * * *" });
+    assert.equal(queries - beforeCleanup, 10, "idle cleanup query count changed; update capacity baseline");
     console.log(
-      "Workers runtime: JWT verification, OAuth signing, transactional circle creation and callable response passed.",
+      "Workers runtime: JWT/OAuth, circle creation, signed jobs and both idle cron capacity baselines passed.",
     );
   } finally {
     await mf.dispose();

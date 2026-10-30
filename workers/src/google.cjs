@@ -5,6 +5,11 @@ const {
   verify,
 } = require("node:crypto");
 const keyCaches = new Map();
+const { increment, countFirestoreReads } = require("./observability.cjs");
+const countedFetch = (...args) => {
+  increment("googleRequests");
+  return fetch(...args);
+};
 let completedOAuth;
 const scopes =
   "https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/identitytoolkit https://www.googleapis.com/auth/firebase.messaging";
@@ -18,7 +23,7 @@ class ApiError extends Error {
     this.code = code;
   }
 }
-async function verifyJwt(token, url, validate, fetcher = fetch) {
+async function verifyJwt(token, url, validate, fetcher = countedFetch) {
   if (typeof token !== "string" || token.length > 16384)
     throw new ApiError("unauthenticated");
   const parts = token.split(".");
@@ -129,7 +134,10 @@ async function verifyRequest(request, env) {
 class GoogleClient {
   constructor(env, fetcher = fetch) {
     this.env = env;
-    this.fetcher = (...args) => fetcher(...args);
+    this.fetcher = (...args) => {
+      increment("googleRequests");
+      return fetcher(...args);
+    };
     this.cachedToken = null;
     this.refresh = null;
   }
@@ -225,12 +233,19 @@ class GoogleClient {
     }
     return data;
   }
-  firestore(path, body, method) {
-    return this.request(
+  async firestore(path, body, method) {
+    increment("firestoreRequests");
+    if (path.endsWith(":commit") && Array.isArray(body?.writes)) {
+      increment("writeAttempts", body.writes.filter((write) => write.update || write.transform).length);
+      increment("deleteAttempts", body.writes.filter((write) => write.delete).length);
+    }
+    const result = await this.request(
       "https://firestore.googleapis.com/v1/" + path,
       body,
       method,
     );
+    countFirestoreReads(path, body, result);
+    return result;
   }
   updateUser(uid, { disabled }) {
     return this.request(
