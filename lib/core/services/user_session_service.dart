@@ -6,6 +6,14 @@ class UserSessionService {
   static String _key(String uid, String suffix) =>
       'fg_user_session_${uid}_$suffix';
 
+  static Future<void> clearSharingConsent(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    final key = _key(uid, 'sharingConsent');
+    if (prefs.containsKey(key) && !await prefs.remove(key)) {
+      throw StateError('Could not revoke saved sharing consent.');
+    }
+  }
+
   static Future<void> deleteUserSession(String uid) async {
     await PreferencesSOSDismissalStore.drainPendingWrites();
     final prefs = await SharedPreferences.getInstance();

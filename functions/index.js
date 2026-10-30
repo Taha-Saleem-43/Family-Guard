@@ -23,6 +23,7 @@ exports.triggerSos = onCall(options, sos.trigger);
 exports.resolveSos = onCall(options, sos.resolve);
 const circles = require('./features/circles').createCircleManagementHandlers(db);
 exports.rotateCircleInvites = onCall(options, circles.rotateInvites);
+exports.leaveCircle = onCall(options, circles.leave);
 const accounts = require('./features/accounts').createAccountDeletionHandlers(db, getAuth());
 exports.requestAccountDeletion = onCall(options, accounts.request);
 exports.processAccountDeletion = onDocumentCreated({ document: 'accountDeletions/{uid}',

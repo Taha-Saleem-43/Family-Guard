@@ -250,6 +250,37 @@ class AuthService {
     return DateTime.parse(data['expiresAt'] as String);
   }
 
+  Future<void> leaveCircle(
+    String uid,
+    String circleId,
+    String? successorId,
+  ) async {
+    _requireCurrentUid(uid);
+    await (_stopTracking?.call(uid) ??
+        LocationService.instance.stop(expectedUid: uid));
+    _requireCurrentUid(uid);
+    // Revoke cached consent even if the response is lost after a server commit.
+    // A late reply must not clear a newer circle's cached session.
+    await UserSessionService.clearSharingConsent(uid);
+    _requireCurrentUid(uid);
+    await UserSessionService.clearUserSession(uid);
+    _requireCurrentUid(uid);
+    final result =
+        await BackendFunctions.callable(
+          'leaveCircle',
+          functions: _functions,
+        ).call({
+          'expectedUid': uid,
+          'circleId': circleId,
+          'successorId': successorId,
+        });
+    _requireCurrentUid(uid);
+    if (result.data is! Map || result.data['left'] != true) {
+      throw StateError('Could not confirm that you left the circle.');
+    }
+    // The profile listener removes circle access; keep the account signed in.
+  }
+
   Stream<CircleModel?> streamCircle(String circleId) {
     if (circleId.isEmpty) return Stream.value(null);
     return _firestore.collection('circles').doc(circleId).snapshots().map((

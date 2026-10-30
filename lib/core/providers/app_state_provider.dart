@@ -399,6 +399,24 @@ class AppStateNotifier extends StateNotifier<AppState> {
     state = initial;
   }
 
+  void finishLeavingCircle(String uid, String circleId) {
+    if (state.accountUnavailable ||
+        state.userId != uid ||
+        (state.circleId.isNotEmpty && state.circleId != circleId)) {
+      return;
+    }
+    final name = state.userName;
+    ++_profileGeneration;
+    _profileSub?.cancel();
+    _profileSub = null;
+    _profileUid = null;
+    ++_sessionGeneration;
+    _circleSub?.cancel();
+    _inviteSub?.cancel();
+    _revokedCircleId = circleId;
+    state = initial.copyWith(userId: uid, userName: name);
+  }
+
   @override
   void dispose() {
     ++_profileGeneration;

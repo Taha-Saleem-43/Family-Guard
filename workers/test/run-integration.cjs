@@ -7,6 +7,7 @@ if (!/^127\.0\.0\.1:\d+$/.test(host || ""))
     "membership",
     "sos",
     "invite_rotation",
+    "circle_leave",
     "account_deletion",
     "push",
     "place_push",

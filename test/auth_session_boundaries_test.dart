@@ -78,14 +78,19 @@ class TestFirestore implements FirebaseFirestore {
 
 class TestFunctions implements FirebaseFunctions {
   final Completer<Map<String, dynamic>>? pending;
+  Completer<void>? entered;
+  String? lastPath;
   TestFunctions([this.pending]);
   @override
   HttpsCallable httpsCallableFromUri(Uri uri, {HttpsCallableOptions? options}) {
+    lastPath = uri.path;
+    entered?.complete();
     expect(uri.scheme, 'https');
     expect(uri.host, 'family-guard-api.tahasaleem981.workers.dev');
     expect(uri.path, startsWith('/'));
     return TestCallable(pending!);
   }
+
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
@@ -110,6 +115,76 @@ class TestResult<T> implements HttpsCallableResult<T> {
 }
 
 void main() {
+  test(
+    'leave clears old consent before a possibly lost response and keeps Auth signed in',
+    () async {
+      SharedPreferences.setMockInitialValues({
+        'fg_user_session_old_sharingConsent': 'old-consent',
+        'fg_user_session_old_parentCode': 'old-code',
+      });
+      final auth = TestAuth();
+      final pending = Completer<Map<String, dynamic>>();
+      final functions = TestFunctions(pending)..entered = Completer<void>();
+      var stopped = false;
+      final service = AuthService(
+        auth: auth,
+        firestore: TestFirestore(TestCollection(TestDocument(Completer()))),
+        functions: functions,
+        stopTracking: (uid) async {
+          expect(uid, 'old');
+          stopped = true;
+        },
+      );
+      final operation = service.leaveCircle('old', 'circle', 'co-parent');
+      final rejected = expectLater(operation, throwsStateError);
+      await functions.entered!.future;
+      expect(stopped, isTrue);
+      expect(functions.lastPath, '/leaveCircle');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('fg_user_session_old_sharingConsent'), isNull);
+      expect(prefs.getString('fg_user_session_old_parentCode'), isNull);
+      // A replacement account's session must survive the old request's completion.
+      auth.currentUser = TestUser('new');
+      await prefs.setString(
+        'fg_user_session_new_sharingConsent',
+        'new-consent',
+      );
+      pending.complete({'left': true});
+      await rejected;
+      expect(auth.currentUser?.uid, 'new');
+      expect(auth.signOutCalls, 0);
+      expect(
+        prefs.getString('fg_user_session_new_sharingConsent'),
+        'new-consent',
+      );
+    },
+  );
+  test(
+    'account switch during tracking pause prevents the leave request',
+    () async {
+      final auth = TestAuth();
+      final entered = Completer<void>(), release = Completer<void>();
+      final functions = TestFunctions();
+      final service = AuthService(
+        auth: auth,
+        firestore: TestFirestore(TestCollection(TestDocument(Completer()))),
+        functions: functions,
+        stopTracking: (_) {
+          entered.complete();
+          return release.future;
+        },
+      );
+      final rejected = expectLater(
+        service.leaveCircle('old', 'circle', null),
+        throwsStateError,
+      );
+      await entered.future;
+      auth.currentUser = TestUser('new');
+      release.complete();
+      await rejected;
+      expect(functions.lastPath, isNull);
+    },
+  );
   test('native stop failure does not leave Firebase signed in', () async {
     SharedPreferences.setMockInitialValues({});
     final auth = TestAuth();

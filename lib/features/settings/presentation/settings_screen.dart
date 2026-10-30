@@ -12,6 +12,7 @@ import '../../auth/providers/auth_providers.dart';
 import '../../map/presentation/widgets/member_detail_sheet.dart';
 import 'permission_status_card.dart';
 import 'invite_rotation_control.dart';
+import 'leave_circle_control.dart';
 import 'account_deletion_control.dart';
 import 'push_status_card.dart';
 import '../../../core/services/map_tile_cache.dart';
@@ -372,6 +373,8 @@ class SettingsScreen extends ConsumerWidget {
           ),
 
           // Sign Out / Reset
+          LeaveCircleControl(members: members),
+          const SizedBox(height: 12),
           const AccountDeletionControl(),
           const SizedBox(height: 12),
           SizedBox(

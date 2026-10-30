@@ -97,9 +97,11 @@ test("both a project identity and a trusted app are required", async () => {
     { id: { ...auth, aud: "foreign-project" } },
     { attestation: { ...app, sub: "foreign-app" } },
   ]) {
-    const response = await call("/createCircle", { data: {} }, options);
-    assert.equal(response.status, 401);
-    assert.equal((await response.json()).error.status, "UNAUTHENTICATED");
+    for (const path of ["/createCircle", "/leaveCircle"]) {
+      const response = await call(path, { data: {} }, options);
+      assert.equal(response.status, 401);
+      assert.equal((await response.json()).error.status, "UNAUTHENTICATED");
+    }
   }
 });
 test("malformed envelopes and oversized bodies are rejected", async () => {
