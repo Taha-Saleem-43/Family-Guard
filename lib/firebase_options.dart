@@ -54,7 +54,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyBg2wQSAN5_wg019gA0BouqSC31eu2a3ho',
-    appId: '1:160141197240:android:e7ef291384709f1720994d',
+    appId: '1:160141197240:android:132cc8ee16d1d9db20994d',
     messagingSenderId: '160141197240',
     projectId: 'familyguard-v2-app',
     storageBucket: 'familyguard-v2-app.firebasestorage.app',

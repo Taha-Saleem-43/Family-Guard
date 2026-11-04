@@ -10,9 +10,10 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val approvedApplicationId = "com.tahasaleem.familyguard"
 val releaseApplicationId = providers.gradleProperty("familyGuardApplicationId")
     .orElse(providers.environmentVariable("FAMILY_GUARD_APPLICATION_ID"))
-    .orElse("com.example.family_guard").get()
+    .orElse(approvedApplicationId).get()
 val signingPropertiesFile = rootProject.file("key.properties")
 val signingProperties = Properties().apply {
     if (signingPropertiesFile.isFile) {
@@ -25,9 +26,8 @@ val hasReleaseSigning = listOf("storeFile", "storePassword", "keyAlias", "keyPas
 
 val validateReleaseConfiguration = tasks.register("validateReleaseConfiguration") {
     doLast {
-        check(releaseApplicationId.matches(Regex("[a-zA-Z][a-zA-Z0-9_]*(\\.[a-zA-Z][a-zA-Z0-9_]*)+")) &&
-            !releaseApplicationId.startsWith("com.example.")) {
-            "Set the owner-approved FAMILY_GUARD_APPLICATION_ID before building a release."
+        check(releaseApplicationId == approvedApplicationId) {
+            "Release application ID must match the owner-approved com.tahasaleem.familyguard."
         }
         check(hasReleaseSigning) {
             "Release signing requires android/key.properties and an existing upload keystore. Debug signing is disabled for releases."
@@ -36,7 +36,7 @@ val validateReleaseConfiguration = tasks.register("validateReleaseConfiguration"
 }
 
 android {
-    namespace = "com.example.family_guard"
+    namespace = "com.tahasaleem.familyguard"
     compileSdk = 36
     buildToolsVersion = "36.1.0"
     ndkVersion = flutter.ndkVersion

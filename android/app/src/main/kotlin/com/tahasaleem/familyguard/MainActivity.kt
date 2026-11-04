@@ -1,4 +1,4 @@
-package com.example.family_guard
+package com.tahasaleem.familyguard
 
 import io.flutter.embedding.android.FlutterActivity
 

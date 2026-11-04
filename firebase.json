@@ -4,7 +4,7 @@
       "android": {
         "default": {
           "projectId": "familyguard-v2-app",
-          "appId": "1:160141197240:android:e7ef291384709f1720994d",
+          "appId": "1:160141197240:android:132cc8ee16d1d9db20994d",
           "fileOutput": "android/app/google-services.json"
         }
       },
@@ -12,7 +12,7 @@
         "lib/firebase_options.dart": {
           "projectId": "familyguard-v2-app",
           "configurations": {
-            "android": "1:160141197240:android:e7ef291384709f1720994d"
+            "android": "1:160141197240:android:132cc8ee16d1d9db20994d"
           }
         }
       }

@@ -10,7 +10,7 @@
   "vars": {
     "FIREBASE_PROJECT_ID": "familyguard-v2-app",
     "FIREBASE_PROJECT_NUMBER": "160141197240",
-    "FIREBASE_APP_IDS": "1:160141197240:android:e7ef291384709f1720994d",
+    "FIREBASE_APP_IDS": "1:160141197240:android:e7ef291384709f1720994d,1:160141197240:android:132cc8ee16d1d9db20994d",
   },
   "triggers": { "crons": ["* * * * *", "*/30 * * * *"] },
   "alias": {
