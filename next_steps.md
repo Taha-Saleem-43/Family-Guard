@@ -1,6 +1,6 @@
 # FamilyGuard — handoff and next steps
 
-Updated: 30 October 2026. Read this first when continuing in a new chat.
+Updated: 5 November 2026. Read this first when continuing in a new chat.
 
 ## Goal and owner preferences
 
@@ -16,12 +16,12 @@ Ship a reliable, appealing Android family-location app on Google Play. Keep the 
 ## Exact Git state
 
 - Workspace: `D:\Flutter_Projects\Others\Family-Guard`.
-- Current branch: `taha/circle-handoff`, based on `taha/backend-cpu-headroom`.
-- Latest backend/app commit: `7ed4183` — safe parent handoff and circle departure, including Settings confirmation, local consent fencing and transactional server checks.
+- Current branch: `taha/production-identity`, based on `taha/circle-handoff`.
+- Latest backend/app identity commit: `a6a6db6` — approved Android identity, matching Firebase configuration, upload-signing helper and CI identity/release safeguards. Parent handoff remains included in `7ed4183`.
 - Earlier CPU optimization `be439f4` and privacy/support links `5ac3c35` are included.
 - Remote main observed locally: `ebc00d4` — UI accessibility refinements.
 - Current branch contains the newer Workers backend, onboarding and map work. Integrate the final verified head once; do not independently merge every stacked predecessor branch.
-- CI for backend monitoring/capacity, privacy-pages and CPU branch run `41102588714`: **all jobs passed**. Check the newer circle-handoff branch CI after pushing.
+- CI through circle-handoff run `41111422029`: **all jobs passed**. Check the newer production-identity branch CI after pushing.
 - CI evidence: https://github.com/Taha-Saleem-43/Family-Guard/actions/runs/41095353878
 - Backend and documentation commits follow that tested app commit. `next_steps.md` is the single maintained guide; the root README links here.
 
@@ -105,17 +105,24 @@ Do not silently trigger emergencies on real family accounts. Use isolated consen
 
 ### 4. Production identity, signing and signed-build verification
 
-- Owner must choose the permanent Android application ID. Current development ID is `com.example.family_guard`; do not invent the permanent identity.
-- Register that identity in Firebase and update Android/Dart configuration consistently, including the Worker App Check app-ID allowlist.
-- Configure upload signing through ignored `android/key.properties`; it did not exist at the audit. Maintain an independent secure keystore backup.
-- Configure production App Check / Play Integrity for the signed app and verify foreground/headless requests.
-- Build and inspect a signed AAB; verify certificate, merged permissions, bundled assets and release native libraries.
+- Owner approved the permanent Android application ID **`com.tahasaleem.familyguard`**. Native namespace/launcher, Gradle default, FlutterFire metadata and Dart Firebase options now use it.
+- The matching Android app is registered in the existing Firebase project: `1:160141197240:android:132cc8ee16d1d9db20994d`. The downloaded native configuration matches it. Run `node scripts/check-android-identity.cjs` to verify all configurations agree, including the backend App Check allowlist.
+- Upload signing now uses ignored `android/key.properties` and `android/upload-keystore/familyguard-upload.p12`. **The owner must back up both securely outside this computer before publishing.** Never print, commit or regenerate these credentials. `scripts/create-upload-keystore.cjs` refuses to overwrite either file.
+- The new app's Play Integrity provider is registered with a one-hour token lifetime and default integrity settings. Upload-certificate SHA-256 is registered. Complete Google Play project linking and add Google's app-signing certificate when Play Console is ready; verify actual foreground/headless token exchange and backend requests on signed test-track installs.
+- The signed release AAB has been built and inspected. See the artifact record below. Verify a Play-distributed install before production submission.
 - Test on a real 16 KB Android runtime. ARM64 ELF and APK ZIP alignment checks have passed, but the Samsung device has 4 KB pages.
 - Release validation deliberately rejects the placeholder identity and missing signing; never bypass it with debug signing.
 
+Execution order for the current release preparation:
+
+1. Align native/Dart/Firebase/backend identity and verify configuration agreement.
+2. Build and inspect an ARM64 debug APK, confirm upload signing validation and rejection of unintended identity overrides, and deploy the backend allowlist.
+3. Register the public upload-certificate fingerprint, build/inspect a signed AAB, and set up App Check as far as existing account access permits.
+4. Record verified artifacts and remaining Play Console/phone steps here; push the tested feature branch and check CI.
+
 ### 5. Play Console and publication
 
-- Owner previously said no Play Console account existed; account completion has not been confirmed.
+- Owner confirmed on 5 November 2026 that no Play Console developer account exists yet. Play project linking, Play app-signing certificate registration and test-track distribution must wait for that account.
 - Google Play registration currently requires a $25 one-time fee. Backend operation can stay on free plans, but Play registration is not free.
 - New personal accounts require at least 12 continuously opted-in closed testers for 14 days before applying for production access. A public launch next week is not feasible when starting that requirement now.
 - Privacy and account-deletion pages/support contact are published (details below). Keep their content accurate as retention, providers, target-audience decisions and data handling evolve; this publication is not Play approval.
@@ -159,13 +166,26 @@ Run durable SQLite tests from `tool/sqlite_tests`. Backend and Worker commands a
 
 ## Existing artifacts and evidence
 
-- Last local debug APK: `build/app/outputs/flutter-apk/app-debug.apk`, rebuilt from app commit `e5b15c2` before the privacy-link change. Package inspection verified all six Nunito weights/license, FamilyGuard launcher label, no exact-alarm permissions, six ARM64 libraries with 16 KB ELF alignment, and APK ZIP alignment. Rebuild current head or use its CI artifact to test the new policy links. Production identity/signing and real 16 KB runtime acceptance remain pending.
+- Last local debug APK: `build/app/outputs/flutter-apk/app-debug.apk`, rebuilt from app commit `a6a6db6` with approved package `com.tahasaleem.familyguard` (106,478,778 bytes). Inspection verified the package/launcher, generated Firebase app ID, all six Nunito weights/license, bundled intro, FamilyGuard label, no exact-alarm permissions, all ten 64-bit libraries (six ARM64 and four x86_64 plugin libraries) with 16 KB ELF alignment and APK ZIP alignment. Signing files are absent from the APK. Real-phone/16 KB runtime acceptance remains pending.
+- Signed release bundle from `a6a6db6` at `build/app/outputs/bundle/release/app-release.aab` (61,162,382 bytes). Artifact SHA-256 `6ee780391a2ab39a4b97ef76b13372b152247f4e41895dcdd1f30aade171dfb4`. Jarsigner verified the signature and keytool confirmed the registered upload certificate. Inspection verified the approved package, merged permissions, bundled intro/fonts/license, release flags, and 16 KB ELF alignment for all 12 packaged 64-bit libraries. Signing files are absent from the bundle. Google Play linking, distribution and device acceptance remain pending.
 - Onboarding preview: `build/regression-validation/interactive-intro.png`.
 - Bundled video: `assets/videos/family_intro.mp4` (six seconds, approximately 41 KB).
 - Icon preview: `assets/branding/icon_preview.png`.
 - Reproducible media generator: `scripts/generate_intro_assets.py` with project-local requirements.
 - Older standalone regression reports were removed; current verification results and remaining acceptance limits are summarized here.
 - Ignored device logs/screenshots may contain private family data; never commit them.
+
+## Production identity and signing setup — 5 November 2026
+
+Owner-approved package: `com.tahasaleem.familyguard`. Firebase app: `1:160141197240:android:132cc8ee16d1d9db20994d`, in the existing `familyguard-v2-app` project. Native configuration was freshly downloaded and checked against Dart options, FlutterFire metadata, Gradle namespace/application ID, launcher package and Worker settings. The downloaded file also contains the existing development client; Google's Android plugin selects the approved package's matching client. No existing Firebase app was deleted.
+
+Worker allowlist deployment: `79479615-0a39-448c-b302-7f69535cd643`. Readback confirms both the original and approved Firebase app IDs are accepted, preserving existing test clients during migration. Three health requests returned ready/HTTP 200 (428/112/69 ms wall time). All 31 Worker cases passed. No billing, IAM, database indexes/rules or encrypted Worker secrets changed.
+
+Upload signing uses ignored `android/key.properties` and `android/upload-keystore/familyguard-upload.p12`; alias `familyguard-upload`. A public PEM certificate and numeric metadata are saved under the ignored upload directory/build output. **Back up the keystore and key.properties securely outside this computer before publication. Do not regenerate them.** The setup helper refuses replacement; generation and certificate checks keep passwords in process environment/private local files, never command arguments or logs.
+
+Public upload-certificate SHA-256: `40:4E:9C:C5:50:85:E8:39:F0:49:BA:D2:D6:31:9A:15:EF:5C:44:CC:3A:CD:29:A2:BF:B7:2E:D2:A7:3C:3A:63`. Firebase registration succeeded. This is the upload certificate; Google's eventual distributed app-signing certificate is separate and must also be registered. Play Integrity provider readback confirms `tokenTtl: 3600s`; integrity defaults were preserved. No Play Console account exists yet, so project linking and actual production attestation remain pending. Never relax app recognition or substitute debug App Check in release builds to bypass that dependency.
+
+Local release validation accepts the approved identity/signing and rejects an unintended application ID. Analysis of the only changed Dart source, `lib/firebase_options.dart`, passed. Full analysis and app tests remain part of CI. The first whole-workspace analyzer was stopped after a slow local scan; it was not counted as a pass. The fresh ARM64 debug APK and its configuration/assets/permission/alignment checks passed. Local Gradle worker count is limited to two in ignored `.cache/gradle/gradle.properties` for this 8 GB machine; no global tooling was changed.
 
 ## Backend monitoring and capacity — 30 October 2026
 
@@ -266,7 +286,7 @@ Place editing adds labelled 48-pixel color choices, wrapping headings, a spoken 
 
 ## Suggested first instruction in the next chat
 
-"Read next_steps.md and inspect the current Git state. Public policy/deletion pages and app links, password recovery, offline fonts, map attribution, local tile caching and partitioned backend maintenance are implemented. Check current CI and continue release preparation on taha feature branches. Keep dependencies local and the backend free. Permanent application ID and signing need owner input. Proceed to controlled device acceptance and performance measurements when phones are connected. Never reset live data or send real emergency alerts during routine tests."
+"Read next_steps.md and inspect the current Git state. Public policy/support links, parent handoff, password recovery, offline fonts/maps and partitioned maintenance are implemented. Production package com.tahasaleem.familyguard and local upload signing are configured; never regenerate existing signing keys. Check current CI and continue release preparation on taha feature branches. Keep dependencies local and the backend free. Owner must back up signing files and create Play Console before Play linking/distribution. Proceed to controlled phone acceptance and performance measurements when devices are connected. Never reset live data or send real emergency alerts during routine tests."
 
 ## Repository structure and maintenance notes
 
